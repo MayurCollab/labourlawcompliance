@@ -66,6 +66,8 @@ const config = Object.freeze({
   isTest: env === 'test',
 
   port: Number(process.env.PORT) || 5000,
+  /** Bind address. 0.0.0.0 exposes the API on the LAN. */
+  host: process.env.HOST || '0.0.0.0',
   /** Primary SPA origin (email links). First entry of CLIENT_URL. */
   clientUrl: corsOrigins[0] || 'http://localhost:5190',
   /** Allowed browser Origins for CORS (CLIENT_URL + optional CORS_ORIGINS). */

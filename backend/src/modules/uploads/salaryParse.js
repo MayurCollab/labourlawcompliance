@@ -86,14 +86,6 @@ export const SALARY_FIELDS = Object.freeze([
 
 export const SALARY_REQUIRED_KEYS = Object.freeze(['employeeNo', 'ptGross']);
 
-export const salaryMappingHasIdentity = (mapping) => {
-  const hasPhy =
-    typeof mapping?.phyCode === 'number' && mapping.phyCode >= 0;
-  const hasClient =
-    typeof mapping?.clientCode === 'number' && mapping.clientCode >= 0;
-  return hasPhy || hasClient;
-};
-
 const fieldMeta = () =>
   SALARY_FIELDS.map(({ key, label, required, group }) => ({
     key,
@@ -108,18 +100,12 @@ export const looksLikeSalaryHeader = (cells) => {
     labels.has('empno') ||
     labels.has('emp no') ||
     labels.has('employee no');
-  const hasPhy = labels.has('phy code') || labels.has('phycode');
-  const hasClient =
-    labels.has('client') ||
-    labels.has('client code') ||
-    labels.has('clientno') ||
-    labels.has('client no');
   const hasAmount =
     labels.has('pt gross') ||
     labels.has('ptgross') ||
     labels.has('p tax') ||
     labels.has('ptax');
-  return hasEmp && hasAmount && (hasPhy || hasClient);
+  return hasEmp && hasAmount;
 };
 
 export const detectSalaryHeaderRow = (rows, scanLimit = HEADER_SCAN_ROWS) => {
@@ -192,7 +178,7 @@ export const parseSalarySheet = (rows, sheetName, originalName = '') => {
   if (headerIndex < 0) {
     headerIndex = firstNonEmptyRowIndex(rows);
     warnings.push(
-      'Could not find a salary header row (EMPNO + PT GROSS + PHY_CODE or Client). Map columns manually or pick the OutPut sheet.',
+      'Could not find a salary header row (EMPNO + PT GROSS). Map columns manually or pick the OutPut sheet.',
     );
   }
 

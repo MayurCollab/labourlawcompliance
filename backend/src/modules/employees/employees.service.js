@@ -157,8 +157,8 @@ export const matchClientForSalaryRow = (
 };
 
 /**
- * Upsert one employee-month row. Unmatched PHY_CODE still inserts
- * (client null); rows absent from the file are kept.
+ * Upsert one employee-month row. PHY_CODE and Client code are optional.
+ * Unmatched rows still insert (client null); rows absent from the file are kept.
  * Optional `cache` skips per-row employee finds and uses Map client matching.
  */
 export const upsertFromSalaryRow = async ({
@@ -188,6 +188,10 @@ export const upsertFromSalaryRow = async ({
     return { outcome: 'skipped', reason: 'Missing PT GROSS' };
   }
 
+  const rawPhy = normalizePhyCode(fields.phyCode);
+  const rawClientCode = normalizeClientCode(fields.clientCode);
+  const omittedIdentity = !rawPhy && !rawClientCode;
+
   const { client, reason: unmatchedReason } = matchClientForSalaryRow(
     clients,
     {
@@ -199,20 +203,15 @@ export const upsertFromSalaryRow = async ({
   );
   const unmatched = !client;
   const clientId = client ? client.id || client._id : null;
-  const clientCode = client
-    ? client.clientCode
-    : normalizeClientCode(fields.clientCode) || null;
+  const clientCode = client ? client.clientCode : rawClientCode || null;
 
-  let phyCode = normalizePhyCode(fields.phyCode);
+  let phyCode = rawPhy;
   if (!phyCode && client) {
     phyCode = normalizePhyCode(client.phyCode);
   }
-  if (!phyCode) {
-    return {
-      outcome: 'skipped',
-      reason: 'Missing PHY_CODE (and no matched client PHY to use)',
-    };
-  }
+  phyCode = phyCode || '';
+
+  const reportUnmatched = unmatched && !omittedIdentity;
 
   const payload = {
     client: clientId,
@@ -227,7 +226,7 @@ export const upsertFromSalaryRow = async ({
     ptGross,
     pTax: fields.pTax === undefined ? undefined : parseAmount(fields.pTax),
     unmatched,
-    unmatchedReason: unmatched ? unmatchedReason : null,
+    unmatchedReason: unmatched && !omittedIdentity ? unmatchedReason : null,
     upload: uploadId ?? null,
   };
 
@@ -245,8 +244,8 @@ export const upsertFromSalaryRow = async ({
       });
       rememberEmployee(cache, employee);
       return {
-        outcome: unmatched ? 'unmatched' : 'inserted',
-        reason: unmatchedReason,
+        outcome: reportUnmatched ? 'unmatched' : 'inserted',
+        reason: reportUnmatched ? unmatchedReason : undefined,
         employee,
       };
     } catch (err) {
@@ -280,7 +279,10 @@ export const upsertFromSalaryRow = async ({
 
   if (!changed) {
     rememberEmployee(cache, existing);
-    return { outcome: unmatched ? 'unmatched' : 'unchanged', employee: existing };
+    return {
+      outcome: reportUnmatched ? 'unmatched' : 'unchanged',
+      employee: existing,
+    };
   }
 
   existing.client = clientId;
@@ -299,8 +301,8 @@ export const upsertFromSalaryRow = async ({
   rememberEmployee(cache, existing);
 
   return {
-    outcome: unmatched ? 'unmatched' : 'updated',
-    reason: unmatchedReason,
+    outcome: reportUnmatched ? 'unmatched' : 'updated',
+    reason: reportUnmatched ? unmatchedReason : undefined,
     employee: existing,
   };
 };

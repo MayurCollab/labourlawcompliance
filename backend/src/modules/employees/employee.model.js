@@ -3,8 +3,8 @@ import mongoose from 'mongoose';
 import auditPlugin from '../../database/plugins/auditPlugin.js';
 
 /**
- * One employee for one PHY branch for one month. Unmatched rows (no Client
- * with that phyCode) are kept with client = null — never dropped.
+ * One employee for one month. PHY_CODE is optional; unmatched rows (no Client)
+ * are kept with client = null — never dropped.
  */
 const employeeSchema = new mongoose.Schema({
   client: {
@@ -33,8 +33,8 @@ const employeeSchema = new mongoose.Schema({
   },
   phyCode: {
     type: String,
-    required: [true, 'PHY_CODE is required'],
     trim: true,
+    default: '',
     maxlength: [32, 'PHY_CODE cannot exceed 32 characters'],
   },
   period: {

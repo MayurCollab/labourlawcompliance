@@ -73,7 +73,7 @@ const KIND_OPTIONS: {
   {
     label: 'Salary employees',
     value: 'salary',
-    hint: 'Typical file: SalarySheet All Employees.xlsx. Match by PHY_CODE or Client code (C0001).',
+    hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO and PT GROSS are required; PHY_CODE and Client code are optional.',
   },
   {
     label: 'Client addresses / RC',
@@ -97,23 +97,10 @@ const statusVariant = (
   return 'secondary';
 };
 
-const mappingComplete = (
-  fields: UploadField[],
-  mapping: UploadMapping,
-  kind: UploadKind,
-) => {
-  const requiredOk = fields
+const mappingComplete = (fields: UploadField[], mapping: UploadMapping) =>
+  fields
     .filter((field) => field.required)
     .every((field) => typeof mapping[field.key] === 'number');
-  if (kind === 'salary') {
-    return (
-      requiredOk &&
-      (typeof mapping.phyCode === 'number' ||
-        typeof mapping.clientCode === 'number')
-    );
-  }
-  return requiredOk;
-};
 
 const importHasErrors = (report?: ImportReport | null) =>
   Boolean(
@@ -201,7 +188,7 @@ export function UploadsPage() {
 
   const canSave =
     Boolean(current) &&
-    mappingComplete(current?.parse.fields ?? [], mapping, activeKind) &&
+    mappingComplete(current?.parse.fields ?? [], mapping) &&
     (current?.kind !== 'salary' || Boolean(period));
 
   const previewColumns: DataTableColumn<UploadPreviewRow>[] = useMemo(() => {
@@ -391,7 +378,7 @@ export function UploadsPage() {
               onChange={(files) => setFile(files?.[0] ?? null)}
               hint={
                 kind === 'salary'
-                  ? 'Headers: EMPNO, PHY_CODE or Client, PT GROSS. Prefer the OutPut sheet.'
+                  ? 'Headers: EMPNO and PT GROSS. PHY_CODE and Client are optional. Prefer the OutPut sheet.'
                   : kind === 'clientMaster'
                     ? 'Headers: clientno, Address.1, RC Professional Tax Number.'
                     : 'Headers: Client, Name of Company, Location, Reg No.'
@@ -483,13 +470,7 @@ export function UploadsPage() {
               {current.parse.fields.map((field) => (
                 <Select
                   key={field.key}
-                  label={
-                    field.required
-                      ? `${field.label} *`
-                      : field.key === 'phyCode' || field.key === 'clientCode'
-                        ? `${field.label} (PHY or Client)`
-                        : field.label
-                  }
+                  label={field.required ? `${field.label} *` : field.label}
                   value={
                     typeof mapping[field.key] === 'number'
                       ? String(mapping[field.key])
@@ -581,7 +562,7 @@ export function UploadsPage() {
               <CardTitle>Save report</CardTitle>
               <CardDescription>
                 {isSalary
-                  ? 'Employees upserted by EMPNO + PHY_CODE + period, matched to clients by Client code or PHY_CODE. Unmatched rows are stored, not dropped.'
+                  ? 'Employees upserted by EMPNO + period (and PHY_CODE when present). Client matching by Client code or PHY_CODE is optional. Unmatched rows are stored, not dropped.'
                   : isClientMaster
                     ? 'Addresses and RC numbers upserted by clientno (C0001). Re-upload updates existing clients.'
                     : 'Clients upserted by client code. Monthly filings upserted by client code + period.'}

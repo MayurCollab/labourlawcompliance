@@ -27,7 +27,6 @@ import {
   parseSalaryWorkbook,
   SALARY_FIELDS,
   SALARY_REQUIRED_KEYS,
-  salaryMappingHasIdentity,
 } from './salaryParse.js';
 import {
   CLIENT_MASTER_FIELDS,
@@ -505,13 +504,6 @@ const importSalary = async (
       'Map EMPNO and PT GROSS before saving',
       422,
       { code: UPLOADS_CODES.MAPPING_INCOMPLETE },
-    );
-  }
-  if (!salaryMappingHasIdentity(mapping)) {
-    throw new AppError(
-      'Map PHY_CODE or Client code so employees can be matched to a client',
-      422,
-      { code: UPLOADS_CODES.IDENTITY_REQUIRED },
     );
   }
 

@@ -31,13 +31,13 @@ const start = async () => {
     );
   }
 
-  const server = app.listen(config.port, () => {
+  const server = app.listen(config.port, config.host, () => {
     const storageNote =
       config.storage.driver === 's3'
         ? `s3 bucket ${config.storage.s3.bucket}`
         : 'local disk';
     logger.info(
-      `Backend listening on port ${config.port} (${config.env}) — storage: ${storageNote} — docs at /api-docs`,
+      `Backend listening on http://${config.host}:${config.port} (${config.env}) — storage: ${storageNote} — docs at /api-docs`,
     );
   });
 

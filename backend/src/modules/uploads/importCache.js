@@ -71,8 +71,7 @@ export const createSalaryMatchCache = async (period) => {
 
   const employeesByKey = new Map();
   for (const employee of employees) {
-    const phy = normalizePhyCode(employee.phyCode);
-    if (!phy) continue;
+    const phy = normalizePhyCode(employee.phyCode) || '';
     employeesByKey.set(
       employeeCacheKey(employee.employeeNo, phy, employee.period),
       employee,
@@ -101,8 +100,7 @@ export const rememberFiling = (cache, filing) => {
 
 export const rememberEmployee = (cache, employee) => {
   if (!cache?.employeesByKey || !employee) return;
-  const phy = normalizePhyCode(employee.phyCode);
-  if (!phy) return;
+  const phy = normalizePhyCode(employee.phyCode) || '';
   cache.employeesByKey.set(
     employeeCacheKey(employee.employeeNo, phy, employee.period),
     employee,

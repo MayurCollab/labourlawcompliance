@@ -244,4 +244,27 @@ describe('Salary ingest upsert', () => {
     const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
     await storage.deleteFile(stored.storedPath);
   });
+
+  test('inserts salary rows when PHY_CODE is blank', async () => {
+    const { created, result } = await uploadAndImport([
+      salaryRow('E7001', 'No Phy A', ''),
+      salaryRow('E7002', 'No Phy B', null, { ptGross: 15000 }),
+    ]);
+
+    expect(result.report.skipped).toHaveLength(0);
+    expect(result.report.unmatched).toHaveLength(0);
+    expect(result.report.inserted).toBe(2);
+
+    const employees = await Employee.find().sort({ employeeNo: 1 });
+    expect(employees).toHaveLength(2);
+    expect(employees[0].employeeNo).toBe('E7001');
+    expect(employees[0].phyCode).toBe('');
+    expect(employees[0].ptGross).toBe(12478);
+    expect(employees[1].employeeNo).toBe('E7002');
+    expect(employees[1].phyCode).toBe('');
+    expect(employees[1].ptGross).toBe(15000);
+
+    const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
+    await storage.deleteFile(stored.storedPath);
+  });
 });

@@ -52,4 +52,27 @@ describe('salaryParse', () => {
   test('extractPeriodFromText finds July-26 inside a filename', () => {
     expect(extractPeriodFromText('Salary Sheet July-26.xlsx')).toBe('2026-07');
   });
+
+  test('detects a salary header that has EMPNO and PT GROSS without PHY_CODE', async () => {
+    const XLSX = await import('xlsx');
+    const aoa = [
+      ['Salary Sheet July-26'],
+      ['SRNO', 'EMPNO', 'EMP_NAME', 'LOCATION', 'STATE', 'PT GROSS', 'P_TAX'],
+      [1, 'E1001', 'Asha Shah', 'Anand', 'Gujarat', 12478, 200],
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'OutPut');
+    const parsed = parseSalaryWorkbook(
+      XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }),
+      null,
+      'Salary Sheet July-26.xlsx',
+    );
+
+    expect(parsed.selectedSheet).toBe('OutPut');
+    expect(parsed.mapping.employeeNo).toBe(1);
+    expect(parsed.mapping.ptGross).toBe(5);
+    expect(parsed.mapping.phyCode).toBeNull();
+    expect(parsed.previewRows[0].cells.employeeNo).toBe('E1001');
+    expect(parsed.warnings).toEqual([]);
+  });
 });

@@ -26,7 +26,7 @@ export const findEmployeesForCompute = (filter) =>
   );
 
 export const findEmployeeByKey = (employeeNo, phyCode, period) =>
-  Employee.findOne({ employeeNo, phyCode, period });
+  Employee.findOne({ employeeNo, phyCode: phyCode || '', period });
 
 /** Preload employees for a salary period so import can skip per-row finds. */
 export const findEmployeesByPeriod = (period) =>
