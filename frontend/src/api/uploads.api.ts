@@ -2,7 +2,6 @@ import axiosInstance from '@/api/axiosInstance';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type {
   ImportProgressEvent,
-  ImportReport,
   ImportUploadPayload,
   ImportUploadResult,
   ListUploadRowsPayload,

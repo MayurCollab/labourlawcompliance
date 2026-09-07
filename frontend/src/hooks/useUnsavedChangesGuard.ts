@@ -1,5 +1,9 @@
 import { useCallback, useEffect } from 'react';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import {
+  useBeforeUnload,
+  useBlocker,
+  type BlockerFunction,
+} from 'react-router-dom';
 
 export type UnsavedChangesGuardOptions = {
   /** Whether there are edits worth warning about. */
@@ -29,7 +33,7 @@ export const useUnsavedChangesGuard = ({
   message = DEFAULT_MESSAGE,
 }: UnsavedChangesGuardOptions) => {
   const blocker = useBlocker(
-    useCallback(
+    useCallback<BlockerFunction>(
       ({ currentLocation, nextLocation }) =>
         when && currentLocation.pathname !== nextLocation.pathname,
       [when],

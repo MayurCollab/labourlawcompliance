@@ -6,7 +6,6 @@ import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { Drawer } from '@/components/dialogs/Drawer';
-import { Checkbox } from '@/components/inputs/Checkbox';
 import { Input } from '@/components/inputs/Input';
 import { Select } from '@/components/inputs/Select';
 import { Switch } from '@/components/inputs/Switch';

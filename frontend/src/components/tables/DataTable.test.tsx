@@ -26,7 +26,7 @@ describe('DataTable', () => {
 
   it('shows empty state when there is no data', () => {
     render(
-      <DataTable
+      <DataTable<Row>
         columns={columns}
         data={[]}
         rowKey={(row) => row.id}

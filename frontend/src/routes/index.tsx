@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ComponentType } from 'react';
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -26,7 +26,12 @@ import { PATHS } from '@/routes/paths';
 const lazyPage = <T extends Record<string, unknown>>(
   loader: () => Promise<T>,
   name: keyof T,
-) => lazy(() => loader().then((mod) => ({ default: mod[name] as never })));
+) =>
+  lazy(() =>
+    loader().then((mod) => ({
+      default: mod[name] as ComponentType,
+    })),
+  );
 
 const LoginPage = lazyPage(
   () => import('@/pages/auth/LoginPage'),
