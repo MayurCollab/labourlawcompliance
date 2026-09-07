@@ -1,0 +1,48 @@
+<div class="employee-page">
+  <div class="employee-page-title">
+    Professional Tax for the Month of {{professionalTaxMonthLabel}}
+  </div>
+  <div class="employee-page-meta">
+    Client name: <strong>{{companyName}}</strong>
+    &nbsp;|&nbsp;
+    Place: <strong>{{place}}</strong>
+    &nbsp;|&nbsp;
+    Eligible Employee Count for Professional Tax : <strong>{{totalEmployeeCount}}</strong>
+  </div>
+  <table class="employee-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Location</th>
+        <th>Employee name</th>
+        <th>PHY CODE</th>
+        <th>P.Tax</th>
+        <th>PT Gross</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each employees}}
+      <tr>
+        <td class="center">{{srNo}}</td>
+        <td>{{locationName}}</td>
+        <td>{{employeeName}}</td>
+        <td class="center">{{phyCode}}</td>
+        <td class="right">{{currency pTax}}</td>
+        <td class="right">{{currency ptGross}}</td>
+      </tr>
+      {{/each}}
+      {{#if employees.length}}
+      <tr class="grand-total-row">
+        <td colspan="4" class="right"><strong>Grand Total</strong></td>
+        <td class="right"><strong>{{currency employeesTotalPTax}}</strong></td>
+        <td class="right"><strong>{{currency employeesTotalPtGross}}</strong></td>
+      </tr>
+      {{/if}}
+      {{#unless employees.length}}
+      <tr>
+        <td colspan="6" class="center empty-row">No employees for this client and month.</td>
+      </tr>
+      {{/unless}}
+    </tbody>
+  </table>
+</div>

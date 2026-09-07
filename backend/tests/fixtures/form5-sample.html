@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    @page { size: A4 portrait; margin: 12mm 10mm; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    th, td { border: 1px solid #000; padding: 2px 4px; }
+  </style>
+</head>
+<body>
+  <h1>{{formTitle}}</h1>
+  <p>Employer: {{employerName}}</p>
+  <p>RC: {{rcNumber}} · Month: {{periodMonthLabel}}</p>
+  <p>Place: {{place}} · Date: {{filingDate}}</p>
+  <h2>Slabs</h2>
+  <table>
+    <thead>
+      <tr><th>Range</th><th>Count</th><th>Rate</th><th>Tax</th></tr>
+    </thead>
+    <tbody>
+      {{#each slabs}}
+      <tr>
+        <td>{{salaryRange this}}</td>
+        <td>{{employeeCount}}</td>
+        <td>{{rate}}</td>
+        <td>{{taxAmount}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  <p>Total A: {{totalA}} · Total payable: {{totalPayable}}</p>
+  <h2>Employees</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>EMPNO</th><th>Name</th><th>Location</th><th>PT Gross</th><th>P.Tax</th></tr>
+    </thead>
+    <tbody>
+      {{#each employees}}
+      <tr>
+        <td>{{srNo}}</td>
+        <td>{{employeeNo}}</td>
+        <td>{{employeeName}}</td>
+        <td>{{locationName}}</td>
+        <td>{{ptGross}}</td>
+        <td>{{pTax}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<div class="declaration">
+  હું પ્રમાણિત કરું છું કે પૂર્વની મુદત દરમિયાન મારે ત્યાં નોકરી કરતા અને વેરો
+  ચૂકવવાને જવાબદાર તમામ કામે રહેનારાઓને પૂર્વવત્ આવરી લેવાયા છે. હું એ પણ પ્રમાણિત
+  કરું છું કે કામે રહેનારાઓને મળતા પગાર વેતનમાં ફેરફારને કારણે તેમના પગાર કે વેતનમાંથી
+  કપાત કરવાની વેરાની રકમમાં, આવશ્યક હોય ત્યાં જરૂરી સુધારા કરવામાં આવ્યા છે.
+</div>
+<div class="solemn-line">
+  હું, શ્રી <span class="field-value">{{signatoryName}}</span> સોગંદપૂર્વક એકરાર
+  કરું છું કે ઉપરની હકીકતો મારી ઉત્તમ જ્ઞાન અને માન્યતા મુજબ સાચી છે.
+</div>
+<div class="footer-row">
+  <div class="footer-left">
+    <div>તારીખ:&nbsp; Dt.: <span class="field-value">{{filingDate}}</span></div>
+    <div>સ્થળ:&nbsp; <span class="field-value">{{place}}</span></div>
+  </div>
+  <div class="footer-right">
+    {{#if companyName}}
+    <div class="company-for-line">For {{companyName}}</div>
+    {{/if}}
+    <div class="signature-mark">
+      <div class="sig-label">સહી:</div>
+      {{#if signatureImageSrc}}
+      <img class="sig-img" src="{{signatureImageSrc}}" alt="સહી / Stamp" />
+      {{/if}}
+      <div class="signature-underline"></div>
+    </div>
+    <div class="hoddo-line">હોદ્દો: ________________</div>
+    <div class="employer-name-line">કામદાર રાખનારનું નામ: ________________</div>
+  </div>
+</div>

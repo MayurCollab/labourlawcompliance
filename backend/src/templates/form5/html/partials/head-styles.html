@@ -1,0 +1,248 @@
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 10mm 9mm;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Noto Sans Gujarati', 'Noto Sans', 'Nirmala UI', Arial, sans-serif;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+  .form5 {
+    width: 100%;
+    max-width: 192mm;
+    margin: 0 auto;
+  }
+  .form-title {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    text-decoration: underline;
+  }
+  .act-line {
+    text-align: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    line-height: 1.4;
+  }
+  .period-line {
+    text-align: center;
+    font-weight: 700;
+    margin: 6px 0 10px;
+    font-size: 12px;
+  }
+  .period-line.left {
+    text-align: left;
+    font-size: 12px;
+  }
+  .field-row {
+    margin: 3px 0;
+    font-size: 11.5px;
+  }
+  .field-label {
+    font-weight: 700;
+  }
+  .field-value {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+  .intro-line {
+    margin: 8px 0 6px;
+    font-size: 11px;
+  }
+  .section-head {
+    margin: 8px 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  table.gu-grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0 6px;
+    font-size: 9.5px;
+  }
+  table.gu-grid th,
+  table.gu-grid td {
+    border: 1px solid #000;
+    padding: 3px 4px;
+    vertical-align: top;
+  }
+  table.gu-grid th {
+    font-weight: 600;
+    text-align: center;
+  }
+  table.gu-grid .idx-row td {
+    text-align: center;
+    font-weight: 700;
+    padding: 2px 3px;
+  }
+  table.gu-grid .data-row td {
+    text-align: center;
+    font-weight: 700;
+    height: 18px;
+  }
+  table.gu-grid .data-row td.first-col {
+    text-align: left;
+    font-weight: 600;
+  }
+  table.gu-grid .totals-row td {
+    font-weight: 700;
+  }
+  table.gu-grid .totals-row .lbl-cell {
+    text-align: right;
+    border-right: none;
+  }
+  table.gu-grid .totals-row .val-cell {
+    border-left: none;
+    text-align: left;
+  }
+  .text-right {
+    text-align: right;
+  }
+  .text-center {
+    text-align: center;
+  }
+  .note-line {
+    font-size: 10.5px;
+    margin: 6px 0;
+    line-height: 1.4;
+  }
+  .pay-line {
+    font-size: 11px;
+    margin: 8px 0;
+    font-weight: 600;
+  }
+  .declaration {
+    font-size: 10px;
+    margin: 10px 0 8px;
+    text-align: justify;
+    line-height: 1.45;
+  }
+  .solemn-line {
+    font-size: 11px;
+    margin: 8px 0;
+  }
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 12px;
+    gap: 16px;
+  }
+  .footer-left {
+    flex: 1;
+    font-size: 11.5px;
+  }
+  .footer-left div {
+    margin-bottom: 6px;
+  }
+  .footer-right {
+    min-width: 210px;
+    text-align: center;
+  }
+  .signature-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .sig-img {
+    display: block;
+    width: 90px;
+    height: auto;
+    max-height: 42px;
+    object-fit: contain;
+    margin-bottom: 2px;
+  }
+  .signature-underline {
+    width: 130px;
+    border-bottom: 1px solid #000;
+    margin-bottom: 2px;
+  }
+  .sig-label {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .hoddo-line,
+  .employer-name-line {
+    margin-top: 8px;
+    font-size: 11px;
+    text-align: left;
+  }
+  .company-for-line {
+    max-width: 220px;
+    color: #1a4480;
+    font-size: 9px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.25;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    margin-bottom: 2px;
+  }
+  .employee-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 10px 0;
+    border: 1px solid #94a3b8;
+  }
+  .employee-table th,
+  .employee-table td {
+    border: 1px solid #cbd5e1;
+    padding: 3px 5px;
+    vertical-align: top;
+  }
+  .employee-table th {
+    font-weight: 600;
+    text-align: center;
+    background: #1e3a5f;
+    color: #ffffff;
+    border-color: #1e3a5f;
+  }
+  .employee-table tbody tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+  .employee-table tr.grand-total-row td {
+    font-weight: 700;
+    background: #e2e8f0 !important;
+    border-top: 2px solid #1e3a5f;
+  }
+  .employee-list-meta {
+    font-size: 9pt;
+    margin: 4px 0 8px;
+    padding: 6px 8px;
+    color: #334155;
+    background: #f1f5f9;
+    border-left: 3px solid #1e3a5f;
+  }
+  .section-title {
+    font-weight: 700;
+    margin: 14px 0 6px;
+    font-size: 11pt;
+    color: #1e3a5f;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #1e3a5f;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+  .muted {
+    color: #64748b;
+  }
+</style>

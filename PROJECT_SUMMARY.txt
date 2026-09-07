@@ -1,0 +1,226 @@
+================================================================================
+                        PROJECT BLUEPRINT SUMMARY
+================================================================================
+
+PURPOSE: This is a reusable full-stack blueprint/boilerplate project. It serves
+as the foundation for building any new web application. It includes all the
+essential plumbing — auth, RBAC, user management, email, file uploads,
+observability, and a complete React UI — so you can skip boilerplate and jump
+straight into domain-specific features.
+
+================================================================================
+TECH STACK
+================================================================================
+
+Backend:  Express 5 (ESM) + MongoDB (Mongoose 8) + Redis (ioredis + BullMQ)
+Frontend: React 19 + TypeScript + Vite 7 + Tailwind CSS 4 + Redux Toolkit
+Ports:    Backend :5000  |  Frontend :5190
+API:      REST at /api/v1/*  |  Swagger docs at /api-docs
+
+================================================================================
+ARCHITECTURE
+================================================================================
+
+Backend follows a layered pattern per module:
+  Routes → Controller → Service → Repository → Model
+
+Frontend follows:
+  Pages → Hooks (React Query + Redux) → API layer (Axios) → Backend
+
+Key patterns:
+- Repository pattern (all DB queries isolated)
+- Service layer (business logic)
+- DTO pattern (response shaping)
+- Zod validation on both ends
+- Centralized error handling (AppError class)
+- Async handler wrapper for controllers
+- Permission-gated UI components + route guards
+
+================================================================================
+BACKEND MODULES & FEATURES
+================================================================================
+
+1. AUTH MODULE
+   - Register with email verification (token-based)
+   - Login with JWT access token (15min) + refresh token (7 days, httpOnly cookie)
+   - Refresh token rotation with theft detection (family-based)
+   - Logout / logout-all / session management (view & revoke active sessions)
+   - Forgot password → email reset link → reset password
+   - Change password (authenticated)
+   - CSRF protection (double-submit cookie)
+
+2. USERS MODULE
+   - Admin CRUD: list (paginated, filtered, sorted), create, get, update, toggle status, soft-delete, hard-erase
+   - Own profile: view, update, avatar upload (with image security validation via Sharp)
+   - Data export (GDPR-style)
+   - Account self-erasure
+
+3. ROLES MODULE
+   - CRUD for roles (system roles protected from deletion)
+   - Assign/update permissions on a role
+   - Bulk assign users to a role
+
+4. PERMISSIONS MODULE
+   - CRUD for permissions
+   - Grouped listing by module (e.g., USERS_VIEW, USERS_CREATE, ROLES_VIEW...)
+
+5. ACTIVITY MODULE
+   - Audit log: records actor, entity, action type, outcome for all significant operations
+
+================================================================================
+MIDDLEWARE STACK
+================================================================================
+
+- JWT auth verification (Bearer token)
+- Dynamic RBAC permission check (loads from DB every request — instant updates)
+- Zod request validation (body, params, query)
+- Rate limiting: global + auth-specific + user-write specific (Redis-backed)
+- CSRF double-submit cookie
+- Helmet (CSP, HSTS, security headers)
+- CORS (configurable origins)
+- Mongo sanitize (injection prevention)
+- Multer file upload + Sharp image processing
+- Morgan HTTP logging + Winston structured logging
+- Request ID injection + request context (AsyncLocalStorage)
+- Cache-control headers
+
+================================================================================
+EMAIL SYSTEM
+================================================================================
+
+- BullMQ queue (Redis-backed) with inline fallback
+- Nodemailer transporter (SMTP configurable)
+- HTML templates: email verification, password reset (with base layout)
+- Email delivery logging (EmailLog model)
+- Retry logic via p-retry
+
+================================================================================
+STORAGE
+================================================================================
+
+- Pluggable driver pattern (STORAGE_DRIVER env var)
+- Local driver implemented (controlled serving, not static mount)
+- S3 driver ready to be added
+- Image security: file-type sniffing to prevent disguised uploads
+
+================================================================================
+OBSERVABILITY
+================================================================================
+
+- Sentry: error tracking + performance tracing (configurable sample rates)
+- Prometheus: request duration/count metrics, /metrics endpoint (bearer-auth protected)
+- Winston: structured JSON logging with request context (userId, requestId)
+- Morgan: HTTP access logs
+- Slow query logger for MongoDB
+
+================================================================================
+FRONTEND STRUCTURE
+================================================================================
+
+Pages:
+  - Auth: Login, Register, ForgotPassword, ResetPassword, VerifyEmail, ChangePassword, ActiveSessions
+  - Users: UsersPage (DataTable) + UserFormDrawer (create/edit in drawer)
+  - Roles: RolesPage
+  - Permissions: RolePermissionsPage (assign permissions to roles)
+  - Home, Forbidden (403), NotFound (404)
+  - Dev: ComponentsGalleryPage (showcase all UI components)
+
+Component Library:
+  - Inputs: Input, Select, MultiSelect, Checkbox, Radio, Switch, DatePicker, TimePicker, FileUpload, ImageUpload, PasswordInput, Textarea
+  - Forms: FormWrapper (react-hook-form integration), FilterPanel, SearchBox
+  - Tables: DataTable (sortable, paginated), Pagination
+  - Dialogs: Modal, Drawer, ConfirmDialog
+  - Layout: Sidebar (collapsible), Navbar (user menu, theme toggle), PageHeader, Breadcrumb
+  - Common: Avatar, Badge, Card, EmptyState, ErrorBoundary, LoadingSpinner, OfflineBanner, SkeletonLoader
+  - Access Control: PermissionGate, PermissionRoute, ProtectedRoute, GuestRoute
+
+State Management:
+  - Redux Toolkit: auth state (user, accessToken, permissions, bootstrapping flag)
+  - React Query: all server data (users, roles, permissions lists)
+  - Bootstrap flow: silent token refresh on app load to restore session
+  - Persisted: user + permissions in localStorage (never the token)
+
+Routing:
+  - React Router 7 with createBrowserRouter (data router)
+  - Guest routes: redirect if already authenticated
+  - Protected routes: require authentication
+  - Permission routes: require specific permissions (e.g., USERS_VIEW)
+  - All pages lazy-loaded with Suspense + RouteFallback
+  - Unsaved changes guard via useBlocker hook
+
+Theming:
+  - Dark/light mode via ThemeProvider (CSS class toggle)
+  - Design tokens in themes/tokens.ts
+  - Tailwind CSS 4 with tw-animate-css
+
+================================================================================
+DATABASE & SEEDING
+================================================================================
+
+- MongoDB with Mongoose 8
+- Audit plugin: auto-sets createdBy/updatedBy on all models
+- Transaction helper (withTransaction.js)
+- Seeder: creates admin user + default roles + all permissions on first run
+- Slow query detection and logging
+
+================================================================================
+TESTING
+================================================================================
+
+Backend: Jest 29 + Supertest + mongodb-memory-server
+  - Unit tests: auth service, RBAC service
+  - Integration tests: auth HTTP, modules HTTP
+
+Frontend: Vitest + Testing Library + jsdom
+  - Component tests: Button, Input, DataTable
+  - Page tests: LoginPage, RegisterPage
+
+================================================================================
+CONFIGURATION (ENV VARS)
+================================================================================
+
+Backend (~30+ vars): NODE_ENV, PORT, MONGODB_URI, REDIS_URL, JWT_ACCESS_SECRET,
+JWT_REFRESH_SECRET, JWT_ACCESS_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, SMTP_HOST,
+SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, APP_URL, FRONTEND_URL, CORS_ORIGIN,
+RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE,
+PROMETHEUS_BEARER_TOKEN, STORAGE_DRIVER, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD, etc.
+
+Frontend: VITE_API_URL, VITE_APP_URL, VITE_SENTRY_DSN
+
+================================================================================
+HOW TO USE THIS BLUEPRINT
+================================================================================
+
+1. Clone this project as your starting point
+2. Rename the project and update package.json
+3. Configure .env files (copy from .env.example)
+4. Run the seeder to create admin + default roles/permissions
+5. Start adding your domain-specific modules following the existing pattern:
+   - Create model → repository → service → controller → routes → validation
+   - Add permissions for the new module
+   - Add frontend page + API + hooks
+   - Register routes in backend/src/routes/index.js
+   - Add navigation items in frontend/src/constants/navigation.ts
+
+================================================================================
+WHAT'S READY TO USE OUT OF THE BOX
+================================================================================
+
+✓ Complete auth flow (register, login, refresh, logout, email verify, password reset)
+✓ User management with admin CRUD + self-service profile
+✓ Dynamic RBAC (roles + permissions) on backend and frontend
+✓ Activity/audit logging
+✓ Email queue with templates
+✓ File upload with image security
+✓ Full component library (inputs, tables, modals, drawers, forms)
+✓ Dark/light theme
+✓ Responsive sidebar layout
+✓ Offline detection banner
+✓ Error boundaries + error tracking (Sentry)
+✓ Prometheus metrics
+✓ Rate limiting + security hardening
+✓ Swagger API documentation
+✓ Testing infrastructure
+✓ Request ID tracing across logs
+
+================================================================================

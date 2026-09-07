@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Form 5 — {{employerName}}</title>
+<style>
+  @page { size: A4; margin: 10mm 9mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12.5px;
+    color: #000;
+    margin: 0;
+  }
+  .sheet { width: 100%; }
+
+  /* ---------- Title block ---------- */
+  .form-title {
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    text-decoration: underline;
+    font-style: italic;
+    margin-bottom: 4px;
+  }
+  .form-subtitle {
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: bold;
+    line-height: 1.4;
+    margin-bottom: 2px;
+  }
+  .form-rule {
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: bold;
+    margin-bottom: 14px;
+  }
+
+  /* ---------- RC No / O-C row ---------- */
+  .rc-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .rc-label { font-weight: bold; font-size: 13px; width: 80px; flex-shrink: 0; }
+  .rc-middle {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    margin-right: 40px;
+  }
+  .rc-box {
+    display: inline-block;
+    color: #000;
+    font-weight: bold;
+    font-size: 19px;
+    letter-spacing: 8px;
+    text-align: center;
+    padding: 2px 2px 1px;
+    border-bottom: 1px solid #000;
+    white-space: nowrap;
+  }
+  .oc-label { font-weight: bold; font-size: 14px; text-decoration: underline; white-space: nowrap; }
+
+  /* ---------- Employer info block ---------- */
+  table.info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+  }
+  table.info-table td {
+    padding: 1px 4px;
+    font-size: 12px;
+    line-height: 1.55;
+    vertical-align: top;
+  }
+  table.info-table .month-cell {
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
+    text-decoration: underline;
+    font-size: 16px;
+    white-space: nowrap;
+  }
+  .ul-bold { font-weight: bold; text-decoration: underline; }
+
+  /* ---------- Main grid tables ---------- */
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+  }
+  table.grid th, table.grid td {
+    border: 1px solid #000;
+    padding: 3px 5px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  table.grid th {
+    font-weight: normal;
+    text-align: left;
+    vertical-align: top;
+  }
+  th.center, td.center { text-align: center; }
+  .idx-row td { text-align: center; font-weight: bold; padding: 2px 4px; border-top: none; }
+  .idx-row.top-border td { border-top: 1px solid #000; }
+  .data-row td { text-align: center; font-weight: bold; height: 20px; }
+  .data-row td.first-col { text-align: left; font-weight: normal; }
+  .totals-row td { font-weight: bold; }
+  .totals-row .lbl-cell { text-align: right; border-right: none; }
+  .totals-row .rs-cell { border-left: none; text-align: left; padding-left: 10px; }
+
+  .section11-note {
+    font-size: 11.5px;
+    font-weight: normal;
+    margin: 6px 0 3px 0;
+  }
+
+  /* ---------- Rs summary rows ---------- */
+  table.rs-table { width: 100%; border-collapse: collapse; margin: 2px 0; }
+  table.rs-table td { padding: 2px 0; font-size: 12px; vertical-align: bottom; }
+  table.rs-table .rs-label-col { width: 30px; text-align: right; font-weight: bold; padding-right: 6px; }
+  table.rs-table .rs-value-col { width: 90px; border: 1px solid #000; text-align: center; font-weight: bold; }
+  .rs-desc { font-size: 12px; line-height: 1.4; }
+  .rs-desc.bold { font-weight: bold; }
+
+  .cert-line {
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 6px 0;
+  }
+  .name-line {
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 8px 0 2px 0;
+    font-weight: bold;
+    display: inline-block;
+  }
+
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 14px;
+  }
+  .footer-left .place-line, .footer-left .date-line {
+    font-weight: bold;
+    text-decoration: underline;
+    font-size: 12px;
+    display: inline-block;
+    padding: 0 2px;
+  }
+  .footer-left div { margin-bottom: 4px; }
+  .footer-right {
+    font-size: 12px;
+    text-align: left;
+    min-width: 200px;
+  }
+  .signature-block-right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 200px;
+  }
+  .company-for-line {
+    max-width: 220px;
+    color: #1a4480;
+    font-size: 9px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.25;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+  }
+  .signature-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .sig-img {
+    display: block;
+    width: 90px;
+    height: auto;
+    max-height: 40px;
+    object-fit: contain;
+    margin-bottom: 2px;
+  }
+  .signature-underline {
+    width: 120px;
+    border-bottom: 1px solid #000;
+    margin-bottom: 2px;
+  }
+  .authorized-signatory {
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    color: #1a4480;
+  }
+  .status-line {
+    width: 100%;
+    margin-top: 6px;
+    text-align: left;
+    font-size: 12px;
+  }
+
+  /* ---------- Page 2: salary employee list ---------- */
+  .employee-page {
+    page-break-before: always;
+    break-before: page;
+    width: 100%;
+    padding-top: 4px;
+  }
+  .employee-page-title {
+    text-align: center;
+    font-size: 15px;
+    font-weight: bold;
+    color: #1e3a5f;
+    letter-spacing: 0.2px;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #1e3a5f;
+  }
+  .employee-page-meta {
+    font-size: 11.5px;
+    color: #334155;
+    margin-bottom: 12px;
+    padding: 6px 8px;
+    background: #f1f5f9;
+    border-left: 3px solid #1e3a5f;
+  }
+  table.employee-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #94a3b8;
+  }
+  table.employee-table th,
+  table.employee-table td {
+    border: 1px solid #cbd5e1;
+    padding: 4px 6px;
+    font-size: 10.5px;
+    line-height: 1.3;
+  }
+  table.employee-table th {
+    font-weight: bold;
+    text-align: center;
+    background: #1e3a5f;
+    color: #ffffff;
+    border-color: #1e3a5f;
+  }
+  table.employee-table tbody tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+  table.employee-table tbody tr:nth-child(odd) td {
+    background: #ffffff;
+  }
+  table.employee-table td.center { text-align: center; }
+  table.employee-table td.right { text-align: right; font-weight: bold; color: #0f172a; }
+  table.employee-table td.empty-row {
+    text-align: center;
+    font-style: italic;
+    padding: 14px;
+    color: #64748b;
+    background: #f8fafc !important;
+  }
+  table.employee-table tr.grand-total-row td {
+    font-weight: bold;
+    background: #e2e8f0 !important;
+    border-top: 2px solid #1e3a5f;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="form-title">FORM 5</div>
+  <div class="form-subtitle">
+    Return of tax payable by employer under Sub-section (1) of Section 6 of the Gujarat State, Tax on Professions, Trades, Callings and Employments Act, 1976.
+  </div>
+  <div class="form-rule">(See Rule 11)</div>
+
+  <div class="rc-row">
+    <div class="rc-label">RC NO.</div>
+    <div class="rc-middle">
+      <div class="rc-box">{{rcNumber}}</div>
+    </div>
+    <div class="oc-label">O/C</div>
+  </div>
+
+  <table class="info-table">
+    <tr>
+      <td colspan="4">Return of tax payable for the month ending on;</td>
+      <td class="month-cell" rowspan="1"></td>
+    </tr>
+    <tr>
+      <td colspan="4">Name of the Employer :&nbsp; <span class="ul-bold">{{employerName}}</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="4">Address :&nbsp; <span class="ul-bold">{{employerAddress}}</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="4">Details of employees during the month in respect of whom tax is payable are as under:</td>
+      <td class="month-cell" rowspan="2">{{periodMonthLabel}}</td>
+    </tr>
+    <tr>
+      <td colspan="4">I Details for tax calculation for tax payable in respect of salaries for the month ending on :</td>
+    </tr>
+  </table>
+
+  <table class="grid">
+    <colgroup>
+      <col style="width:19%"><col style="width:11%"><col style="width:22%">
+      <col style="width:22%"><col style="width:13%"><col style="width:13%">
+    </colgroup>
+    <tr>
+      <th>Employees whose monthly salaries or wages are</th>
+      <th>No of employees</th>
+      <th>Number of employees for whom no tax is payable under proviso to section 4</th>
+      <th>Number of employees in respect of whom tax is payable (i. e. Col.2 minus)</th>
+      <th>Rate of tax per month per employees</th>
+      <th>Amount of tax deducted</th>
+    </tr>
+    <tr class="idx-row">
+      <td class="center">1</td><td class="center">2</td><td class="center">3</td>
+      <td class="center">4</td><td class="center">5</td><td class="center">6</td>
+    </tr>
+    <tr class="data-row">
+      <td class="first-col">i) Rs. 0 to 2999</td>
+      <td>{{slab1_no_emp}}</td>
+      <td>{{slab1_no_tax_exempt}}</td>
+      <td>{{slab1_taxable_emp}}</td>
+      <td>{{slab1_rate}}</td>
+      <td>{{slab1_amount}}</td>
+    </tr>
+    <tr class="data-row">
+      <td class="first-col">ii) Rs. 3000 to 5999</td>
+      <td>{{slab2_no_emp}}</td>
+      <td>{{slab2_no_tax_exempt}}</td>
+      <td>{{slab2_taxable_emp}}</td>
+      <td>{{slab2_rate}}</td>
+      <td>{{slab2_amount}}</td>
+    </tr>
+    <tr class="data-row">
+      <td class="first-col">iii) Rs.6000 to 8999</td>
+      <td>{{slab3_no_emp}}</td>
+      <td>{{slab3_no_tax_exempt}}</td>
+      <td>{{slab3_taxable_emp}}</td>
+      <td>{{slab3_rate}}</td>
+      <td>{{slab3_amount}}</td>
+    </tr>
+    <tr class="data-row">
+      <td class="first-col">iv) Rs. 9,000 to 11999</td>
+      <td>{{slab4_no_emp}}</td>
+      <td>{{slab4_no_tax_exempt}}</td>
+      <td>{{slab4_taxable_emp}}</td>
+      <td>{{slab4_rate}}</td>
+      <td>{{slab4_amount}}</td>
+    </tr>
+    <tr class="data-row">
+      <td class="first-col">(iv) Rs. 12,000 &amp; Above</td>
+      <td>{{slab5_no_emp}}</td>
+      <td>{{slab5_no_tax_exempt}}</td>
+      <td>{{slab5_taxable_emp}}</td>
+      <td>{{slab5_rate}}</td>
+      <td>{{slab5_amount}}</td>
+    </tr>
+    <tr class="totals-row">
+      <td colspan="4" style="border:none;"></td>
+      <td class="lbl-cell">Total A Rs</td>
+      <td class="center">{{totalA}}</td>
+    </tr>
+  </table>
+
+  <div class="section11-note">
+    11. Details of employess in respect of whom tax is payable at the enhanced rate for previous period on account of arrears salaries or wages paid during the month.
+  </div>
+
+  <table class="grid">
+    <colgroup>
+      <col style="width:19%"><col style="width:15%"><col style="width:19%">
+      <col style="width:19%"><col style="width:15%"><col style="width:13%">
+    </colgroup>
+    <tr>
+      <th rowspan="2">Number of employees liable to tax at enhanced rate to be shown separately according to column 4 and column 5</th>
+      <th colspan="2" class="center">RATE OF TAX</th>
+      <th rowspan="2">Difference of Rate (Col. 2 minus Col. 3)</th>
+      <th rowspan="2">No. of months for which arrears is paid col. 5)</th>
+      <th rowspan="2">Additional tax payable (Col. 1. col. 4 and</th>
+    </tr>
+    <tr>
+      <th class="center">payable on account of arrears salaries and wages</th>
+      <th class="center">At which tax was paid</th>
+    </tr>
+    <tr class="idx-row top-border">
+      <td class="center">1</td><td class="center">2</td><td class="center">3</td>
+      <td class="center">4</td><td class="center">5</td><td class="center">6</td>
+    </tr>
+    <tr class="data-row">
+      <td>{{arrears_no_emp}}</td>
+      <td>{{arrears_rate_payable}}</td>
+      <td>{{arrears_rate_paid}}</td>
+      <td>{{arrears_rate_diff}}</td>
+      <td>{{arrears_months}}</td>
+      <td>{{arrears_additional_tax}}</td>
+    </tr>
+    <tr class="totals-row">
+      <td colspan="4" style="border:none;"></td>
+      <td class="lbl-cell">Total B Rs.</td>
+      <td class="center ul-bold">{{totalB}}</td>
+    </tr>
+  </table>
+
+  <table class="rs-table">
+    <tr>
+      <td class="rs-desc bold">Total Tax payable</td>
+      <td class="rs-label-col">Rs</td>
+      <td class="rs-value-col">{{totalTax}}</td>
+    </tr>
+  </table>
+  <div class="rs-desc">
+    Add. Simple interest payable (if any )on the above amount at *[one and a half percent] per month or part thereof
+  </div>
+  <table class="rs-table">
+    <tr>
+      <td class="rs-desc">(vide section 9 (2) of the Act,)</td>
+      <td class="rs-label-col">Rs</td>
+      <td class="rs-value-col">{{interest}}</td>
+    </tr>
+    <tr>
+      <td class="rs-desc bold" style="padding-top:8px;">Total Tax and Interest Payable</td>
+      <td class="rs-label-col" style="vertical-align:top; padding-top:8px;">Rs</td>
+      <td class="rs-value-col">{{totalPayable}}</td>
+    </tr>
+  </table>
+
+  <div class="cert-line">
+    Amount Paid by Receipt No. :-.......................................Dated.......................................<br>
+    I certify that all the employees who are liable to pay the tax in my employ during the period of return have been covered by the foregoing particulars. I also certify that the
+    necessary revision in the amount of the tax deductable from the salary or wages of the employees on account of variation in the salary or wages by them has been made where
+    necessary.
+  </div>
+
+  <div class="cert-line">
+    <span class="name-line">I. Shri <span class="ul-bold">{{signatoryName}}</span></span>....................................................................................... solemnly declare that the
+    above statements are ture to the best of my knowledge and belief.
+  </div>
+
+  <div class="footer-row">
+    <div class="footer-left">
+      <div class="place-line">Place: <span class="ul-bold">{{place}}</span></div><br>
+      <div class="date-line">Dt.: <span class="ul-bold">{{filingDate}}</span></div>
+    </div>
+    <div class="footer-right">
+      <div class="signature-block-right">
+        {{#if companyName}}
+        <div class="company-for-line">For {{companyName}}</div>
+        {{/if}}
+        <div class="signature-mark">
+          {{#if signatureImageSrc}}
+          <img class="sig-img" src="{{signatureImageSrc}}" alt="Signature" />
+          {{/if}}
+          <div class="signature-underline"></div>
+          <div class="authorized-signatory">Authorized Signatory</div>
+        </div>
+        <div class="status-line">Status: ________________</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{{#if includeEmployees}}
+{{> employee-list-general}}
+{{/if}}
+</body>
+</html>

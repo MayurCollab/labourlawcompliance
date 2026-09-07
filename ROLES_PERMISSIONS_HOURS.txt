@@ -1,0 +1,9 @@
+Project Name	Module / Area	Task / Work Description	Work Type	Total Hours	Status
+Blueprint	Backend – Auth	JWT access + refresh token auth (rotation, cookies), login/register/logout, verify email, forgot/reset/change password, sessions	Development	2hr	Completed
+Blueprint	Backend – Permissions	Added Permissions module (CRUD + grouped listing) with model, service, routes, and Zod validation	Development	1hr	Completed
+Blueprint	Backend – Roles	Added Roles module (CRUD, system-role protection, permission + user assignment) with layered APIs	Development	2hr	Completed
+Blueprint	Backend – RBAC	Wired checkPermission middleware, permission constants, and role↔permission assignment APIs	Development	1hr	Completed
+Blueprint	Frontend – Auth	Auth pages + Axios refresh interceptor, Redux session bootstrap, guest/protected routes	Development	1hr	Completed
+Blueprint	Frontend – Roles UI	Built RolesPage CRUD with DataTable, forms, and Zod validation	Development	1hr	Completed
+Blueprint	Frontend – Permissions UI	Built RolePermissionsPage to assign permissions to roles	Development	1hr	Completed
+Blueprint	Frontend – Access Control	Added PermissionGate, PermissionRoute, constants, API hooks, and navigation wiring	Development	1hr	Completed

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+<meta charset="UTF-8" />
+<title>Mehsana Form-5 Template — {{employerName}}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 14mm 16mm 12mm 16mm;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Nirmala UI", "Noto Sans Gujarati", "Shruti", Arial, sans-serif;
+    font-size: 14.5px;
+    line-height: 1.4;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+  .page { width: 100%; }
+  .page-2,
+  .employee-page {
+    page-break-before: always;
+    break-before: page;
+  }
+  .employee-page { padding-top: 4px; }
+
+  .dyn {
+    font-family: Verdana, Arial, sans-serif;
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  .form-title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    text-decoration: underline;
+    margin: 0 0 12px;
+  }
+  .mmc-header {
+    width: 100%;
+    margin: 0 0 10px;
+  }
+  .mmc-header-img {
+    display: block;
+    width: 100%;
+    max-width: 170mm;
+    height: auto;
+  }
+  .month-line.month-left {
+    text-align: right;
+  }
+  .act-line {
+    text-align: justify;
+    font-size: 14.5px;
+    font-weight: 700;
+    margin: 0 0 14px;
+    line-height: 1.55;
+  }
+  .month-line {
+    text-align: right;
+    margin: 0 0 10px;
+  }
+  .month-line .dyn {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .info-row {
+    font-size: 14.5px;
+    font-weight: 700;
+    margin: 8px 0;
+    line-height: 1.6;
+  }
+  .rc-row {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 10px 0 14px;
+  }
+  .rc-row .dyn {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .intro-line,
+  .section-head {
+    font-size: 14.5px;
+    font-weight: 700;
+    text-align: justify;
+    margin: 14px 0 12px;
+    line-height: 1.55;
+  }
+
+  table.gu-grid {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+    font-weight: 700;
+    margin: 0 0 10px;
+  }
+  table.gu-grid td,
+  table.gu-grid th {
+    border: 1px solid #000;
+    padding: 6px 6px;
+    vertical-align: middle;
+  }
+  table.gu-grid thead { display: table-header-group; }
+  table.gu-grid tr { page-break-inside: avoid; }
+
+  table.slab col.c1 { width: 22.07%; }
+  table.slab col.c2 { width: 13%; }
+  table.slab col.c3 { width: 22.61%; }
+  table.slab col.c4 { width: 16.45%; }
+  table.slab col.c5 { width: 14.30%; }
+  table.slab col.c6 { width: 14.27%; }
+  table.slab tr.head td {
+    min-height: 32mm;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.4;
+    vertical-align: middle;
+    font-weight: 700;
+    padding: 8px 6px;
+  }
+  table.slab tr.idx td { height: 8mm; text-align: center; font-size: 13px; }
+  table.slab tr.data td { height: 16mm; text-align: center; font-size: 13px; }
+  table.slab td.first { text-align: left; padding-left: 6px; }
+
+  .total-a-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 700;
+    font-size: 15px;
+    margin: 12px 0 0;
+  }
+  .see-back {
+    text-align: right;
+    font-weight: 700;
+    font-size: 14.5px;
+    margin: 8px 0 0;
+  }
+
+  table.arrears col.c1 { width: 19.30%; }
+  table.arrears col.c2 { width: 16.31%; }
+  table.arrears col.c3 { width: 16.76%; }
+  table.arrears col.c4 { width: 19.71%; }
+  table.arrears col.c5 { width: 14.73%; }
+  table.arrears col.c6 { width: 13.19%; }
+  table.arrears tr.head td {
+    min-height: 26mm;
+    text-align: center;
+    font-size: 11px;
+    line-height: 1.3;
+    vertical-align: middle;
+    font-weight: 700;
+  }
+  table.arrears tr.idx td { height: 7mm; text-align: center; }
+  table.arrears tr.data td { height: 30mm; }
+  table.arrears tr.total td { height: 9mm; font-weight: 700; }
+  table.arrears tr.total td.total-b {
+    text-align: right;
+    padding-right: 10px;
+    font-size: 14.5px;
+  }
+
+  .interest-line,
+  .pay-line,
+  .declaration,
+  .solemn-line {
+    font-size: 13.5px;
+    font-weight: 700;
+    text-align: justify;
+    line-height: 1.4;
+  }
+  .interest-line { margin: 10px 0; }
+  .pay-line { margin: 12px 0 10px; }
+  .declaration { margin: 12px 0 10px; }
+  .solemn-line { margin: 14px 0 18px; }
+  .pay-amt { margin: 0 6px; }
+  .pay-blank {
+    display: inline-block;
+    min-width: 110px;
+    border-bottom: 1px solid #000;
+    height: 1em;
+    margin: 0 4px;
+  }
+
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    margin-top: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    page-break-inside: avoid;
+  }
+  .footer-left {
+    width: 48%;
+  }
+  .footer-right {
+    width: 48%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .place-line,
+  .date-line {
+    font-weight: 700;
+    text-decoration: underline;
+    display: inline-block;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .signature-block-right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .company-for-line {
+    max-width: 100%;
+    color: #1a4480;
+    font-size: 9px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.25;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    margin-bottom: 2px;
+  }
+  .signature-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .sig-img {
+    display: block;
+    width: 90px;
+    height: auto;
+    max-height: 40px;
+    object-fit: contain;
+    margin-bottom: 2px;
+  }
+  .signature-underline {
+    width: 140px;
+    border-bottom: 1px solid #000;
+    margin-bottom: 2px;
+  }
+  .authorized-signatory {
+    font-size: 12px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 10px;
+    color: #1a4480;
+  }
+  .hoddo-line,
+  .employer-name-line {
+    display: flex;
+    align-items: baseline;
+    width: 100%;
+    margin-top: 8px;
+    font-size: 13.5px;
+    font-weight: 700;
+    text-align: left;
+  }
+  .hoddo-line .blank-line,
+  .employer-name-line .blank-line {
+    flex: 1;
+    border-bottom: 1px solid #000;
+    margin-left: 8px;
+    min-height: 1em;
+  }
+
+  .employee-page-title {
+    text-align: center;
+    font-size: 15px;
+    font-weight: bold;
+    color: #1e3a5f;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #1e3a5f;
+    font-family: "Times New Roman", Times, serif;
+  }
+  .employee-page-meta {
+    font-size: 11.5px;
+    color: #334155;
+    margin-bottom: 12px;
+    padding: 6px 8px;
+    background: #f1f5f9;
+    border-left: 3px solid #1e3a5f;
+    font-family: "Times New Roman", Times, serif;
+  }
+  table.employee-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #94a3b8;
+    font-family: "Times New Roman", Times, serif;
+  }
+  table.employee-table th,
+  table.employee-table td {
+    border: 1px solid #cbd5e1;
+    padding: 4px 6px;
+    font-size: 10.5px;
+    line-height: 1.3;
+  }
+  table.employee-table th {
+    font-weight: bold;
+    text-align: center;
+    background: #1e3a5f;
+    color: #ffffff;
+    border-color: #1e3a5f;
+  }
+  table.employee-table tbody tr:nth-child(even) td { background: #f8fafc; }
+  table.employee-table tbody tr:nth-child(odd) td { background: #ffffff; }
+  table.employee-table td.center { text-align: center; }
+  table.employee-table td.right { text-align: right; font-weight: bold; color: #0f172a; }
+  table.employee-table td.empty-row {
+    text-align: center;
+    font-style: italic;
+    padding: 14px;
+    color: #64748b;
+    background: #f8fafc !important;
+  }
+  table.employee-table tr.grand-total-row td {
+    font-weight: bold;
+    background: #e2e8f0 !important;
+    border-top: 2px solid #1e3a5f;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+
+<div class="page page-1">
+  <div class="mmc-header">
+    {{#if mehsanaHeaderImageSrc}}
+    <img
+      class="mmc-header-img"
+      src="{{mehsanaHeaderImageSrc}}"
+      alt="મહેસાણા મહાનગરપાલિકા ( નમુનો – ૫ )"
+    />
+    {{else}}
+    <div class="form-title">મહેસાણા મહાનગરપાલિકા</div>
+    <div class="form-title">( નમુનો – ૫ )</div>
+    {{/if}}
+  </div>
+
+  <div class="act-line">
+    ગુજરાત રાજ્ય, વ્યવસાય, વ્યાપાર, ધંધા અને રોજગાર વેરા અધિનિયમ, ૧૯૭૬ ની
+    કલમ-૬ ની પેટે- કલમ(૧) હેઠળ કામે રાખનારે ભરવાનું વેરાનું પત્રક (જુઓ નિયમ-૧૧)
+  </div>
+
+  <div class="month-line month-left"> <span class="dyn">{{periodMonthLabel}}</span></div>
+
+  <div class="info-row">
+    કામે રાખનારનું નામ:&nbsp;&nbsp;<span class="dyn">{{employerName}}</span>
+  </div>
+  {{#if employerAddress}}
+  <div class="info-row">
+    સરનામું:&nbsp;&nbsp;<span class="dyn">{{employerAddress}}</span>
+  </div>
+  {{/if}}
+  <div class="rc-row">
+    રજિસ્ટ્રેશન પ્રમાણપત્ર ક્રમાંક:&nbsp;&nbsp;<span class="dyn">{{rcNumber}}</span>
+  </div>
+
+  <div class="intro-line">
+    જેના સંબંધમાં વેરો ભરવાનો હોય તે મહિના સમયે કામે રહેનારાઓની વિગતો નીચે પ્રમાણે છે.
+  </div>
+
+  <div class="section-head">
+    (૧) <span class="dyn">{{periodFrom}} to {{periodTo}}</span> ની તારીખે પૂર્ણ થતા મહિના
+    માટે પગારના સંબંધમાં ભરવાના વેરા માટે વેરાની ગણતરી કરવા માટેની વિગતો.
+  </div>
+
+  <table class="gu-grid slab">
+    <col class="c1" /><col class="c2" /><col class="c3" />
+    <col class="c4" /><col class="c5" /><col class="c6" />
+    <thead>
+      <tr class="head">
+        <td>જેમનો માસિક પગાર અથવા વેતન નીચે પ્રમાણે હોય તેવા કામે રહેનારાઓ</td>
+        <td>કામે રહેનારાઓની સંખ્યા</td>
+        <td>જેમના માટે કલમ-૪ ના બીજા પરંતુક હેઠળ કોઈ વેરો ભરવાનો ન હોય તેવા કામે રહેનારાઓની સંખ્યા</td>
+        <td>જેના સંબંધમાં વેરા ભરવાના હોય તે કામે રહેનારાઓની સંખ્યા (એટલે કે કોલમ-૨ બાદ કોલમ-૩)</td>
+        <td>કામે રહેનાર દીઠ દર મહિને વેરાનો દર રૂા.</td>
+        <td>કપાત કરેલી વેરાની રકમ રૂા.</td>
+      </tr>
+      <tr class="idx">
+        <td>(૧)</td><td>(૨)</td><td>(૩)</td><td>(૪)</td><td>(૫)</td><td>(૬)</td>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="data">
+        <td class="first">(૧) ૧ થી ૨૯૯૯ સુધી (૦)</td>
+        <td>{{slab1_no_emp}}</td>
+        <td>{{slab1_no_tax_exempt}}</td>
+        <td>{{slab1_taxable_emp}}</td>
+        <td>00</td>
+        <td>{{slab1_amount}}</td>
+      </tr>
+      <tr class="data">
+        <td class="first">(૨) ૩,૦૦૦ થી ૫૯૯૯ સુધી (૨૦)</td>
+        <td>{{slab2_no_emp}}</td>
+        <td>{{slab2_no_tax_exempt}}</td>
+        <td>{{slab2_taxable_emp}}</td>
+        <td>00</td>
+        <td>{{slab2_amount}}</td>
+      </tr>
+      <tr class="data">
+        <td class="first">(૩) ૬૦૦૦ થી ૮૯૯૯ સુધી (૮૦)</td>
+        <td>{{slab3_no_emp}}</td>
+        <td>{{slab3_no_tax_exempt}}</td>
+        <td>{{slab3_taxable_emp}}</td>
+        <td>{{slab3_rate}}</td>
+        <td>{{slab3_amount}}</td>
+      </tr>
+      <tr class="data">
+        <td class="first">(૪) ૯૦૦૦ થી ૧૧૯૯૯ સુધી (૧૫૦)</td>
+        <td>{{slab4_no_emp}}</td>
+        <td>{{slab4_no_tax_exempt}}</td>
+        <td>{{slab4_taxable_emp}}</td>
+        <td>{{slab4_rate}}</td>
+        <td>{{slab4_amount}}</td>
+      </tr>
+      <tr class="data">
+        <td class="first">(૫) ૧૨૦૦૦ થી વધુ (૨૦૦)</td>
+        <td class="dyn">{{slab5_no_emp}}</td>
+        <td>{{slab5_no_tax_exempt}}</td>
+        <td class="dyn">{{slab5_taxable_emp}}</td>
+        <td>{{slab5_rate}}</td>
+        <td class="dyn">{{slab5_amount}}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="total-a-row">
+    <span>(એ) કુલ રૂપિયા:</span>
+    <span class="dyn">{{totalA}}/-</span>
+  </div>
+  <div class="see-back">(પાછળ જુઓ)</div>
+</div>
+
+<div class="page page-2">
+  <div class="section-head">
+    (૨) જેના સંબંધમાં મહિને દરમિયાન ચૂકવેલ પગાર કે વેતન બાકી હોવાને લીધે અગાઉની મુદત
+    માટે વધારેલ દરે વેરા ભરવાના હોય તેના કામે રહેનારાઓની વિગતો.
+  </div>
+
+  <table class="gu-grid arrears">
+    <col class="c1" /><col class="c2" /><col class="c3" />
+    <col class="c4" /><col class="c5" /><col class="c6" />
+    <thead>
+      <tr class="head">
+        <td>વધારેલ દરે વેરો ભરવા પાત્ર કામે રહેનારાઓની સંખ્યા (કોલમ-૪ અને કોલમ-૫) અનુસાર અલગ રીતે દર્શાવવા.</td>
+        <td>પગાર અને વેતનની ચઢેલી રકમની ચૂકવણી પેટે ભરવા પાત્ર વેરાનો દર.</td>
+        <td>કયા દરે અગાઉ વેરા ભરવામાં આવ્યો હતો તે.</td>
+        <td>દરનો તફાવત (કોલમ-૨ બાદ કોલમ-૩)</td>
+        <td>જે મહિના માટે ચઢેલી રકમ ચૂકવવામાં આવી હોય તેની સંખ્યા મહિનાની.</td>
+        <td>ભરવાપાત્ર વધારાનો વેરો (કલમ-૪ અને કોલમ-૫)</td>
+      </tr>
+      <tr class="idx">
+        <td>(૧)</td><td>(૨)</td><td>(૩)</td><td>(૪)</td><td>(૫)</td><td>(૬)</td>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="data">
+        <td>{{arrears_no_emp}}</td>
+        <td>{{arrears_rate_payable}}</td>
+        <td>{{arrears_rate_paid}}</td>
+        <td>{{arrears_rate_diff}}</td>
+        <td>{{arrears_months}}</td>
+        <td>{{arrears_additional_tax}}</td>
+      </tr>
+      <tr class="total">
+        <td colspan="3"></td>
+        <td colspan="3" class="total-b">કુલ (બી) રૂપિયા...... {{totalB}}............</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="interest-line">
+    ભરવાપાત્ર કુલ વેરો એટલે કુલ (એ) + કુલ (બી) રૂા. વત્તા ઉપર્યુક્ત રકમ ઉપર દર મહિને
+    થતા તેના ભાગ માટે બે ટકાના દરે આપવાનું સાદું વ્યાજ (હોય તો) અધિનિયમની કલમ-૯ (૨) જુઓ.
+  </div>
+
+  <div class="pay-line">
+    ભરવાપાત્ર કુલ વેરો અને વ્યાજ રૂપિયા
+    <span class="dyn pay-amt">{{totalPayable}}/-</span>
+    તારીખ <span class="pay-blank"></span>
+    ના રસીદ નંબર <span class="pay-blank"></span>
+    હેઠળ ભરેલી રકમ.
+  </div>
+
+  <div class="declaration">
+    હું પ્રમાણિત કરું છું કે પૂર્વની મુદત દરમિયાન મારે ત્યાં નોકરી કરતા અને વેરો ભરવાને
+    જવાબદાર તમામ કામે રહેનારાઓને પૂર્વવત્ આવરી લેવાયા છે. હું એ પણ પ્રમાણિત કરું છું કે
+    કામે રહેનારાઓને મળતા પગાર વેતનમાં ફેરફારને કારણે તેમના પગાર કે વેતનમાં કપાત કરવાની
+    વેરાની રકમમાં, આવશ્યક હોય ત્યાં જરૂરી સુધારા કરવામાં આવ્યા છે.
+  </div>
+
+  <div class="solemn-line">
+    હું, શ્રી <span class="dyn">{{signatoryName}}</span>................................................................
+    સોગંદપૂર્વક એકરાર કરું છું કે ઉપરની હકીકતો મારી ઉત્તમ જ્ઞાન અને માન્યતા મુજબ સાચી છે.
+  </div>
+
+  <div class="footer-row">
+    <div class="footer-left">
+      <div class="date-line">તારીખ: Dt.: <span class="dyn">{{filingDate}}</span></div><br>
+      <div class="place-line">સ્થળ: <span class="dyn">{{place}}</span></div>
+    </div>
+    <div class="footer-right">
+      <div class="signature-block-right">
+        {{#if companyName}}
+        <div class="company-for-line">For {{companyName}}</div>
+        {{/if}}
+        <div class="signature-mark">
+          {{#if signatureImageSrc}}
+          <img class="sig-img" src="{{signatureImageSrc}}" alt="સહી" />
+          {{/if}}
+          <div class="signature-underline"></div>
+          <div class="authorized-signatory">અધિકૃત સહી</div>
+        </div>
+        <div class="hoddo-line">હોદ્દો:<span class="blank-line"></span></div>
+        <div class="employer-name-line">કામે રાખનારનું નામ:<span class="blank-line"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{#if includeEmployees}}
+{{> employee-list-general}}
+{{/if}}
+</body>
+</html>
