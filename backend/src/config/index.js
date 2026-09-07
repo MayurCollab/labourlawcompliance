@@ -43,10 +43,9 @@ if (storageDriver === 's3') {
 }
 
 if (env === 'production' && !process.env.REDIS_URL) {
-  console.error(
-    '[config] REDIS_URL is required in production (rate limits + email queue).',
+  console.warn(
+    '[config] REDIS_URL is unset — using in-memory rate limits and inline email sends. Set REDIS_URL in production so limits are shared across processes and emails go through the queue.',
   );
-  process.exit(1);
 }
 
 const config = Object.freeze({
