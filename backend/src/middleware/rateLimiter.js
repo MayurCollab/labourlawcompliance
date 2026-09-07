@@ -32,7 +32,7 @@ export const globalLimiter = rateLimit({
   max: config.rateLimit.max,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => config.isTest,
+  skip: (req) => config.isTest || req.method === 'OPTIONS',
   store: buildStore('global'),
   handler: rateLimitHandler,
 });
@@ -44,7 +44,7 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  skip: () => config.isTest,
+  skip: (req) => config.isTest || req.method === 'OPTIONS',
   store: buildStore('auth'),
   handler: rateLimitHandler,
 });
@@ -58,7 +58,11 @@ export const userWriteLimiter = rateLimit({
   max: Number(process.env.USER_WRITE_RATE_MAX) || 60,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => config.isTest || req.method === 'GET' || req.method === 'HEAD',
+  skip: (req) =>
+    config.isTest ||
+    req.method === 'OPTIONS' ||
+    req.method === 'GET' ||
+    req.method === 'HEAD',
   keyGenerator: (req) =>
     req.user?.id
       ? `user:${req.user.id}`

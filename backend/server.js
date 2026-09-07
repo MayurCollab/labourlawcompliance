@@ -3,24 +3,31 @@ import './src/observability/instrument.js';
 
 import config from './src/config/index.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
-import { disconnectRedis, isRedisEnabled } from './src/config/redis.js';
+import {
+  connectRedis,
+  disconnectRedis,
+  isRedisEnabled,
+} from './src/config/redis.js';
 import {
   startEmailWorker,
   stopEmailWorker,
 } from './src/email/emailQueue.js';
-import app from './src/app.js';
 import logger from './src/utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const start = async () => {
   await connectDB();
+  await connectRedis();
+
+  // Load Express after Redis probe so rate-limit stores match availability.
+  const { default: app } = await import('./src/app.js');
 
   if (isRedisEnabled()) {
     startEmailWorker();
   } else {
     logger.warn(
-      '[startup] REDIS_URL unset — using in-memory rate limits and inline email sends',
+      '[startup] Redis unavailable — using in-memory rate limits and inline email sends',
     );
   }
 

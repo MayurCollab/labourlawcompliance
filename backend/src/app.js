@@ -59,7 +59,7 @@ app.use(
         imgSrc: ["'self'", 'data:', 'blob:'],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        connectSrc: ["'self'", config.clientUrl],
+        connectSrc: ["'self'", ...config.corsOrigins],
         formAction: ["'self'"],
         ...(config.isProduction
           ? { upgradeInsecureRequests: [] }
@@ -86,7 +86,16 @@ app.use((_req, res, next) => {
 
 app.use(
   cors({
-    origin: config.clientUrl,
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+      const normalized = origin.replace(/\/$/, '');
+      if (config.corsOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
     exposedHeaders: ['Content-Disposition'],
   }),

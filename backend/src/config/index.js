@@ -48,6 +48,17 @@ if (env === 'production' && !process.env.REDIS_URL) {
   );
 }
 
+const parseOriginList = (value) =>
+  String(value || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+const corsOrigins = [
+  ...parseOriginList(process.env.CLIENT_URL || 'http://localhost:5190'),
+  ...parseOriginList(process.env.CORS_ORIGINS),
+];
+
 const config = Object.freeze({
   env,
   isProduction: env === 'production',
@@ -55,7 +66,10 @@ const config = Object.freeze({
   isTest: env === 'test',
 
   port: Number(process.env.PORT) || 5000,
-  clientUrl: process.env.CLIENT_URL || 'http://localhost:5190',
+  /** Primary SPA origin (email links). First entry of CLIENT_URL. */
+  clientUrl: corsOrigins[0] || 'http://localhost:5190',
+  /** Allowed browser Origins for CORS (CLIENT_URL + optional CORS_ORIGINS). */
+  corsOrigins,
 
   mongoUri: process.env.MONGO_URI,
 

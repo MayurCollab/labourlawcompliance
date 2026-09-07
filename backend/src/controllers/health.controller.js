@@ -49,7 +49,7 @@ const checkMongo = async () => {
 
 const checkRedis = async () => {
   if (!isRedisEnabled()) {
-    // Not configured is a valid deployment (dev/single instance), not a failure
+    // Unset or unreachable Redis is a valid single-instance deploy, not a failure
     return { status: 'not_configured' };
   }
 
