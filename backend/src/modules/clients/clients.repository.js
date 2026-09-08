@@ -7,6 +7,9 @@ export const createClient = (data) => Client.create(data);
 export const findClients = (filter, { sort, skip, limit }) =>
   Client.find(filter).sort(sort).skip(skip).limit(limit).populate(LOCATION_POPULATE);
 
+export const findClientsForExport = (filter, { sort }) =>
+  Client.find(filter).sort(sort).populate(LOCATION_POPULATE);
+
 export const countClients = (filter = {}) => Client.countDocuments(filter);
 
 export const findClientById = (id) =>

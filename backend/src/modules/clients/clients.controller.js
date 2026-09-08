@@ -13,6 +13,20 @@ export const listClientOptions = asyncHandler(async (req, res) => {
   return sendSuccess(res, result, CLIENTS_MESSAGES.FETCHED);
 });
 
+export const exportClients = asyncHandler(async (req, res) => {
+  const { buffer, filename, mimetype } = await clientsService.exportClients(
+    req.query,
+  );
+  res.setHeader('Content-Type', mimetype);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${filename.replace(/"/g, '')}"`,
+  );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).send(buffer);
+});
+
 export const getClient = asyncHandler(async (req, res) => {
   const client = await clientsService.getClient(req.params.id);
   return sendSuccess(res, { client }, CLIENTS_MESSAGES.FETCHED);

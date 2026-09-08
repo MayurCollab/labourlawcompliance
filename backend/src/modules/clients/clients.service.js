@@ -14,6 +14,7 @@ import {
 import { extractPhyCode, legalCompanyName, normalizePhyCode } from '../uploads/masterParse.js';
 import { CLIENTS_CODES, normalizeClientCode } from './clients.constants.js';
 import { toClientDto, toClientListDto } from './clients.dto.js';
+import { buildClientsWorkbook } from './clientsExport.js';
 import * as clientsRepository from './clients.repository.js';
 
 const CLIENT_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -46,10 +47,7 @@ const assertCodeAvailable = async (clientCode, excludeId = null) => {
   }
 };
 
-export const listClients = async (query) => {
-  const { page, limit, search, locationId, fundCode, sortBy, sortOrder } =
-    query;
-
+const buildClientListFilter = ({ search, locationId, fundCode }) => {
   const filter = {};
   if (search) {
     const regex = { $regex: escapeRegex(search), $options: 'i' };
@@ -62,9 +60,18 @@ export const listClients = async (query) => {
   }
   if (locationId) filter.location = locationId;
   if (fundCode) filter.fundCode = fundCode.trim();
+  return filter;
+};
 
+const sortFromQuery = ({ sortBy, sortOrder }) => ({
+  [sortBy]: sortOrder === 'asc' ? 1 : -1,
+});
+
+export const listClients = async (query) => {
+  const { page, limit, sortBy, sortOrder } = query;
+  const filter = buildClientListFilter(query);
   const skip = (page - 1) * limit;
-  const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+  const sort = sortFromQuery({ sortBy, sortOrder });
 
   const [clients, total] = await Promise.all([
     clientsRepository.findClients(filter, { sort, skip, limit }),
@@ -80,6 +87,26 @@ export const listClients = async (query) => {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     },
   };
+};
+
+/**
+ * Excel of matching clients (same filters as the list, no pagination).
+ */
+export const exportClients = async (query) => {
+  const filter = buildClientListFilter(query);
+  const sort = sortFromQuery(query);
+  const clients = await clientsRepository.findClientsForExport(filter, {
+    sort,
+  });
+  const file = buildClientsWorkbook(clients);
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.CLIENT_EXPORT,
+    entityType: ENTITY_TYPES.CLIENT,
+    changes: { count: clients.length },
+  });
+
+  return file;
 };
 
 /**

@@ -9,6 +9,7 @@ import { PERMISSION_NAMES } from '../permissions/permissions.constants.js';
 import * as clientsController from './clients.controller.js';
 import {
   createClientSchema,
+  exportClientsQuerySchema,
   listClientsQuerySchema,
   updateClientSchema,
 } from './clients.validation.js';
@@ -54,6 +55,33 @@ router.get(
   '/options',
   checkPermission(PERMISSION_NAMES.CLIENTS_VIEW),
   clientsController.listClientOptions,
+);
+
+/**
+ * @openapi
+ * /clients/export:
+ *   get:
+ *     tags: [Clients]
+ *     summary: Download the employer client list as Excel
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: query, name: search, schema: { type: string } }
+ *       - { in: query, name: locationId, schema: { type: string } }
+ *       - { in: query, name: fundCode, schema: { type: string } }
+ *     responses:
+ *       200:
+ *         description: Excel workbook of matching clients
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.get(
+  '/export',
+  checkPermission(PERMISSION_NAMES.CLIENTS_VIEW),
+  validate({ query: exportClientsQuerySchema }),
+  clientsController.exportClients,
 );
 
 /**

@@ -9,6 +9,10 @@ import type {
   Location,
   UpdateClientPayload,
 } from '@/types/client.types';
+import {
+  filenameFromContentDisposition,
+  saveBlob,
+} from '@/utils/download';
 
 const toQuery = (params: ListClientsParams) => {
   const query: Record<string, string> = {};
@@ -60,6 +64,24 @@ export const clientsApi = {
       ApiSuccessResponse<ClientOptionsResult>
     >('/api/v1/clients/options');
     return data.data;
+  },
+
+  exportExcel: async (
+    params: Pick<
+      ListClientsParams,
+      'search' | 'locationId' | 'fundCode' | 'sortBy' | 'sortOrder'
+    > = {},
+  ): Promise<void> => {
+    const response = await axiosInstance.get('/api/v1/clients/export', {
+      params: toQuery(params),
+      responseType: 'blob',
+    });
+    const blob = response.data as Blob;
+    const filename = filenameFromContentDisposition(
+      response.headers['content-disposition'],
+      'clients.xlsx',
+    );
+    saveBlob(blob, filename);
   },
 };
 

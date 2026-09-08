@@ -23,6 +23,14 @@ export const listClientsQuerySchema = paginationQuerySchema.extend({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+export const exportClientsQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  locationId: objectIdSchema.optional(),
+  fundCode: z.string().trim().max(32).optional(),
+  sortBy: z.enum(CLIENT_SORTABLE_FIELDS).default('clientCode'),
+  sortOrder: z.enum(['asc', 'desc']).default('asc'),
+});
+
 export const createClientSchema = z.object({
   clientCode: z
     .string({ error: 'Client code is required' })

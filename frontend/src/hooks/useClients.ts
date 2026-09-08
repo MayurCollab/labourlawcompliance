@@ -86,6 +86,23 @@ export const useUpdateClientMutation = () => {
   });
 };
 
+export const useExportClientsMutation = () =>
+  useMutation({
+    mutationKey: ['clients', 'export'],
+    mutationFn: (
+      params: Pick<
+        ListClientsParams,
+        'search' | 'locationId' | 'fundCode' | 'sortBy' | 'sortOrder'
+      > = {},
+    ) => clientsApi.exportExcel(params),
+    onSuccess: () => {
+      toastSuccess('Download started');
+    },
+    onError: (error) => {
+      toastError(getApiErrorMessage(error, 'Could not download clients'));
+    },
+  });
+
 export const useDeleteClientMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({

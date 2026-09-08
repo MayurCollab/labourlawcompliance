@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { Download, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
@@ -28,6 +28,7 @@ import {
   useClientsQuery,
   useCreateClientMutation,
   useDeleteClientMutation,
+  useExportClientsMutation,
   useLocationsQuery,
   useUpdateClientMutation,
 } from '@/hooks/useClients';
@@ -109,7 +110,15 @@ export function ClientsPage() {
   const createMutation = useCreateClientMutation();
   const updateMutation = useUpdateClientMutation();
   const deleteMutation = useDeleteClientMutation();
+  const exportMutation = useExportClientsMutation();
   const settingsMutation = useUpdateSettingsMutation();
+
+  const exportParams = {
+    search: search || undefined,
+    locationId: listParams.locationId,
+    sortBy: listParams.sortBy,
+    sortOrder: listParams.sortOrder,
+  };
 
   const locationOptions = useMemo(
     () =>
@@ -231,6 +240,18 @@ export function ClientsPage() {
           { label: 'Home', href: PATHS.home },
           { label: 'Clients' },
         ]}
+        actions={
+          <Button
+            variant="outline"
+            leftIcon={<Download className="size-4" />}
+            loading={exportMutation.isPending}
+            onClick={() => {
+              void exportMutation.mutateAsync(exportParams);
+            }}
+          >
+            Download Excel
+          </Button>
+        }
       />
 
       <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>

@@ -35,6 +35,7 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   CLIENT_CREATE: 'clients.create',
   CLIENT_UPDATE: 'clients.update',
   CLIENT_SOFT_DELETE: 'clients.soft_delete',
+  CLIENT_EXPORT: 'clients.export',
 
   LOCATION_CREATE: 'locations.create',
   LOCATION_UPDATE: 'locations.update',
