@@ -16,6 +16,10 @@ const IGNORED_COMMANDS = new Set([
   'authenticate',
   'createIndexes',
   'listIndexes',
+  // createCollection — Mongoose issues this at boot for each model. On a
+  // remote MongoDB it often exceeds the 200ms threshold and looks like a
+  // document insert (`create on unknown`).
+  'create',
 ]);
 
 /** Commands whose first field names the target collection. */
@@ -28,6 +32,7 @@ const COLLECTION_FIELD = {
   update: 'update',
   delete: 'delete',
   findAndModify: 'findAndModify',
+  create: 'create',
 };
 
 /**
