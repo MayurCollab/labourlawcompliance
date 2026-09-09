@@ -6,7 +6,8 @@ import * as s3Storage from './s3.storage.js';
 /**
  * Storage abstraction — services import this module, never a provider
  * directly. Drivers share saveFile/saveDocument/readFileBuffer/deleteFile
- * and store the same public path shape (/uploads/...).
+ * Local disk uses /uploads/... paths. S3 objects store a full HTTPS
+ * bucket URL in MongoDB (still private — download via the API).
  *
  * `s3` uses hybrid routing: only avatars/ and generated/ go to the bucket;
  * documents/ and templates/ stay on local disk.

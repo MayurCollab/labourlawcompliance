@@ -40,11 +40,15 @@ export const toComputationDto = (computation) => {
 
 const toGeneratedFileDto = (file) => {
   if (!file || !file.filename) return null;
+  const storedPath = file.storedPath || '';
+  const url = /^https?:\/\//i.test(storedPath) ? storedPath : null;
   return {
     version: file.version,
     filename: file.filename,
     mimetype: file.mimetype,
     size: file.size,
+    /** S3 object URL when storage driver uses the bucket (private — use /download). */
+    url,
     templateName: file.templateName || null,
     templateCode: file.templateCode || null,
     source: file.source || null,

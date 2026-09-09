@@ -39,28 +39,28 @@ npm install
 npm run verify:form5   # optional smoke test; writes uploads/verify_Form5_html.pdf when OK
 ```
 
-**Production / Linux server**
+**Production / Linux server (no Docker)**
 
-1. Run `npm ci` or `npm install` in `backend/` on the server (do not omit devDependencies if your deploy strips them before Puppeteer downloads Chromium).
-2. Install OS libraries Chromium needs on minimal images:
+Chromium needs **OS libraries** (`libatk`, `libnss`, …). Those are **not** npm packages — they cannot be listed under `dependencies` in `package.json`. Instead, `backend/package.json` runs a postinstall script that installs them with `apt-get` on Linux when `NODE_ENV=production`.
 
-   **Debian / Ubuntu**
+1. On the server (as root, or with passwordless sudo):
 
    ```bash
-   sudo apt-get update
-   sudo apt-get install -y \
-     ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
-     libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 \
-     libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 \
-     libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 \
-     libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 \
-     libxss1 libxtst6 wget xdg-utils
+   cd backend
+   NODE_ENV=production npm ci
+   # or: npm run setup:chromium-deps
    ```
 
-   **Docker** — use a Node image with Chromium deps, or add the apt packages above to your Dockerfile.
+   That installs Puppeteer’s Chromium **and** the Debian/Ubuntu packages listed in `scripts/installChromiumOsDeps.mjs`.
+
+2. If postinstall skipped (no root/sudo), run once:
+
+   ```bash
+   sudo npm run setup:chromium-deps
+   ```
 
 3. If the process runs as a non-root user, ensure `/tmp` (or `PUPPETEER_TMP_DIR`) is writable.
-4. Common launch flags are already set in code: `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage` (needed on many Linux hosts and in Docker).
+4. Common launch flags are already set in code: `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage`.
 
 **Verify Chromium on the server**
 

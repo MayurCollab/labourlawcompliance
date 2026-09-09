@@ -111,6 +111,8 @@ export type GeneratedForm5File = {
   filename: string;
   mimetype: string;
   size: number;
+  /** S3 object URL when stored in the bucket (private — prefer /download). */
+  url?: string | null;
   templateName: string | null;
   templateCode: string | null;
   source: 'client' | 'location' | 'global' | null;

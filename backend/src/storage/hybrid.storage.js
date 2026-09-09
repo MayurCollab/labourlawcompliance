@@ -17,7 +17,12 @@ const normalizeFolder = (folder) =>
 const usesS3Folder = (folder) => S3_FOLDER_SET.has(normalizeFolder(folder));
 
 const usesS3Path = (publicPath) => {
-  if (!publicPath || !publicPath.startsWith('/uploads/')) return false;
+  if (!publicPath) return false;
+
+  // Full S3 object URL stored in MongoDB (generated / avatars).
+  if (s3Storage.isOurS3ObjectUrl(publicPath)) return true;
+
+  if (!publicPath.startsWith('/uploads/')) return false;
   return usesS3Folder(publicPath.slice('/uploads/'.length));
 };
 

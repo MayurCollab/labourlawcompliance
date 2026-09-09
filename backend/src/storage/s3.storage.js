@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import path from 'node:path';
 
 import {
   DeleteObjectCommand,
@@ -15,8 +16,8 @@ import logger from '../utils/logger.js';
 
 /**
  * S3 storage provider — same interface as local.storage.js.
- * Objects stay private; avatars are streamed through /uploads, documents
- * through authenticated module download endpoints.
+ * Returns a virtual-hosted S3 HTTPS URL as `path` (stored in MongoDB).
+ * Objects stay private; download via authenticated API / /uploads proxy.
  */
 
 const EXTENSION_BY_MIME = {
@@ -45,25 +46,90 @@ const getClient = () => {
 };
 
 const bucket = () => config.storage.s3.bucket;
+const region = () => config.storage.s3.region;
 
-const publicPathFor = (folder, filename) =>
-  `${UPLOADS_PREFIX}${folder ? `${folder}/` : ''}${filename}`;
+/** Virtual-hosted-style object URL stored in MongoDB. */
+export const objectUrlForKey = (key) => {
+  const encodedKey = String(key)
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  return `https://${bucket()}.s3.${region()}.amazonaws.com/${encodedKey}`;
+};
 
-const keyFromPublicPath = (publicPath) => {
-  if (!publicPath || !publicPath.startsWith(UPLOADS_PREFIX)) return null;
+const isSafeRelativeKey = (relative) =>
+  Boolean(relative) &&
+  !relative.includes('\0') &&
+  !relative.includes('..') &&
+  !relative.includes('\\');
 
-  const relative = publicPath.slice(UPLOADS_PREFIX.length);
-  if (
-    !relative ||
-    relative.includes('\0') ||
-    relative.includes('..') ||
-    relative.includes('\\')
-  ) {
+/**
+ * Build a readable object filename from the display name.
+ * Adds a short stamp so regenerates do not overwrite prior versions.
+ */
+const buildObjectFilename = (originalName, extension) => {
+  const ext =
+    extension ||
+    path.posix.extname(String(originalName || '')).toLowerCase() ||
+    '';
+  const base = path.posix.basename(String(originalName || ''), ext);
+  const stem =
+    base
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'file';
+  const stamp = `${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
+  return `${stem}_${stamp}${ext}`;
+};
+
+/**
+ * Resolve an S3 object key from a stored Mongo value:
+ * - https://bucket.s3.region.amazonaws.com/key
+ * - https://bucket.s3.amazonaws.com/key
+ * - https://s3.region.amazonaws.com/bucket/key
+ * - /uploads/key (legacy)
+ */
+export const keyFromStoredPath = (storedPath) => {
+  if (!storedPath || typeof storedPath !== 'string') return null;
+
+  if (storedPath.startsWith(UPLOADS_PREFIX)) {
+    const relative = storedPath.slice(UPLOADS_PREFIX.length);
+    return isSafeRelativeKey(relative) ? relative : null;
+  }
+
+  let url;
+  try {
+    url = new URL(storedPath);
+  } catch {
     return null;
   }
 
-  return relative;
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+
+  const host = url.hostname.toLowerCase();
+  const b = bucket().toLowerCase();
+  const r = region().toLowerCase();
+  let key = '';
+
+  if (host === `${b}.s3.${r}.amazonaws.com` || host === `${b}.s3.amazonaws.com`) {
+    key = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  } else if (
+    host === `s3.${r}.amazonaws.com` ||
+    host === 's3.amazonaws.com'
+  ) {
+    const parts = url.pathname.replace(/^\/+/, '').split('/');
+    if (parts[0]?.toLowerCase() !== b) return null;
+    key = decodeURIComponent(parts.slice(1).join('/'));
+  } else {
+    return null;
+  }
+
+  return isSafeRelativeKey(key) ? key : null;
 };
+
+/** True when the value is an HTTPS URL for our configured bucket. */
+export const isOurS3ObjectUrl = (storedPath) =>
+  Boolean(keyFromStoredPath(storedPath) && /^https?:\/\//i.test(storedPath));
 
 const isNotFound = (error) => {
   const status = error?.$metadata?.httpStatusCode;
@@ -85,7 +151,7 @@ const wrapStorageError = (error, fallbackMessage) => {
 export const saveFile = async ({ buffer, mimetype, folder = '' }) => {
   const processed = await validateAndProcessImage(buffer, mimetype);
   const extension = EXTENSION_BY_MIME[processed.mimetype] || '';
-  const filename = `${randomUUID()}${extension}`;
+  const filename = buildObjectFilename(`avatar${extension}`, extension);
   const key = `${folder ? `${folder}/` : ''}${filename}`;
 
   try {
@@ -103,7 +169,7 @@ export const saveFile = async ({ buffer, mimetype, folder = '' }) => {
   }
 
   return {
-    path: publicPathFor(folder, filename),
+    path: objectUrlForKey(key),
     mimetype: processed.mimetype,
   };
 };
@@ -115,7 +181,10 @@ export const saveDocument = async ({
   originalName = '',
 }) => {
   const processed = await validateDocument(buffer, mimetype, originalName);
-  const filename = `${randomUUID()}${processed.extension}`;
+  const filename = buildObjectFilename(
+    processed.originalName || `file${processed.extension}`,
+    processed.extension,
+  );
   const key = `${folder ? `${folder}/` : ''}${filename}`;
 
   try {
@@ -133,7 +202,7 @@ export const saveDocument = async ({
   }
 
   return {
-    path: publicPathFor(folder, filename),
+    path: objectUrlForKey(key),
     mimetype: processed.mimetype,
     originalName: processed.originalName,
     size: processed.buffer.length,
@@ -141,7 +210,7 @@ export const saveDocument = async ({
 };
 
 export const deleteFile = async (publicPath) => {
-  const key = keyFromPublicPath(publicPath);
+  const key = keyFromStoredPath(publicPath);
   if (!key) return;
 
   try {
@@ -158,7 +227,7 @@ export const deleteFile = async (publicPath) => {
 };
 
 export const readFileBuffer = async (publicPath) => {
-  const key = keyFromPublicPath(publicPath);
+  const key = keyFromStoredPath(publicPath);
   if (!key) {
     throw new AppError('File not found', 404, { code: 'FILE_NOT_FOUND' });
   }

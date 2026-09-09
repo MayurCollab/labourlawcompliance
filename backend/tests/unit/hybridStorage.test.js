@@ -22,6 +22,10 @@ jest.unstable_mockModule('../../src/storage/s3.storage.js', () => ({
   saveDocument: s3SaveDocument,
   deleteFile: s3DeleteFile,
   readFileBuffer: s3ReadFileBuffer,
+  isOurS3ObjectUrl: (storedPath) =>
+    typeof storedPath === 'string' &&
+    /^https:\/\/.+\.amazonaws\.com\//i.test(storedPath) &&
+    /\/(avatars|generated)\//i.test(storedPath),
 }));
 
 const {
@@ -69,7 +73,7 @@ describe('hybrid storage routing', () => {
     expect(s3SaveDocument).not.toHaveBeenCalled();
   });
 
-  test('read/delete route by public path folder', async () => {
+  test('read/delete route by public path folder or S3 URL', async () => {
     s3ReadFileBuffer.mockResolvedValueOnce(Buffer.from('s3'));
     localReadFileBuffer.mockResolvedValueOnce(Buffer.from('local'));
 
@@ -85,5 +89,13 @@ describe('hybrid storage routing', () => {
 
     await deleteFile('/uploads/templates/d.html');
     expect(localDeleteFile).toHaveBeenCalledWith('/uploads/templates/d.html');
+
+    jest.clearAllMocks();
+    const s3Url =
+      'https://test-bucket.s3.ap-south-1.amazonaws.com/generated/Form5_abc.pdf';
+    s3ReadFileBuffer.mockResolvedValueOnce(Buffer.from('from-url'));
+    await readFileBuffer(s3Url);
+    expect(s3ReadFileBuffer).toHaveBeenCalledWith(s3Url);
+    expect(localReadFileBuffer).not.toHaveBeenCalled();
   });
 });
