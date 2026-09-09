@@ -158,6 +158,8 @@ export function TemplatesPage() {
         id: 'actions',
         header: '',
         className: 'text-right',
+        width: 200,
+        minWidth: 200,
         cell: (row) => (
           <div className="flex justify-end gap-2">
             <Button

@@ -74,4 +74,18 @@ describe('ptCompute', () => {
       computedRate: 200,
     });
   });
+
+  test('blank PT GROSS uses open-ended ₹200 slab', () => {
+    const result = computePt(GUJARAT_DEFAULT_SLABS, [
+      employee('E1', null),
+      employee('E2', ''),
+      employee('E3', 15000),
+    ]);
+    expect(result.employeeCount).toBe(3);
+    expect(result.unslottedCount).toBe(0);
+    const top = result.slabs.find((row) => row.salaryFrom === 12000);
+    expect(top.employeeCount).toBe(3);
+    expect(top.taxAmount).toBe(600);
+    expect(result.totalA).toBe(600);
+  });
 });

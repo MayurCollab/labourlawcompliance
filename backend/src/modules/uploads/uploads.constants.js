@@ -49,3 +49,6 @@ export const UPLOAD_SORTABLE_FIELDS = Object.freeze([
 ]);
 
 export const EXCEL_EXTENSIONS = Object.freeze(['.xlsx', '.xlsm', '.xls']);
+
+/** Mongo bulkWrite chunk size for sheet imports (salary / master / addresses). */
+export const IMPORT_BULK_CHUNK_SIZE = 500;

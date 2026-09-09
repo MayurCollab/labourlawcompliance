@@ -13,8 +13,8 @@ export function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar items={APP_NAV_ITEMS} title={APP_SHORT_NAME} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Navbar />
+      <div className="flex min-w-0 flex-1 flex-col bg-transparent">
+        <Navbar className="border-border/80 bg-card/80 backdrop-blur-md" />
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>

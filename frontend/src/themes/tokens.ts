@@ -2,6 +2,8 @@
  * Design tokens consumed by Tailwind / shadcn via CSS variables in
  * styles/index.css. Keep this file as the JS-side reference for spacing,
  * radius, and semantic color names.
+ *
+ * Brand: cool slate shell + teal primary (labour / compliance).
  */
 export const designTokens = {
   colors: {
@@ -14,6 +16,11 @@ export const designTokens = {
     destructive: 'var(--destructive)',
     border: 'var(--border)',
     sidebar: 'var(--sidebar)',
+    ring: 'var(--ring)',
+  },
+  brand: {
+    name: 'teal-slate',
+    hue: 230,
   },
   radius: {
     sm: 'var(--radius-sm)',

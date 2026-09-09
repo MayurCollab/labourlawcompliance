@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,15 +16,15 @@ const data: Row[] = [
 ];
 
 describe('DataTable', () => {
-  it('renders rows', () => {
+  it('renders rows', async () => {
     render(
       <DataTable columns={columns} data={data} rowKey={(row) => row.id} />,
     );
-    expect(screen.getByText('Ada')).toBeInTheDocument();
+    expect(await screen.findByText('Ada')).toBeInTheDocument();
     expect(screen.getByText('Grace')).toBeInTheDocument();
   });
 
-  it('shows empty state when there is no data', () => {
+  it('shows empty state when there is no data', async () => {
     render(
       <DataTable<Row>
         columns={columns}
@@ -33,7 +33,7 @@ describe('DataTable', () => {
         emptyTitle="No users"
       />,
     );
-    expect(screen.getByText('No users')).toBeInTheDocument();
+    expect(await screen.findByText('No users')).toBeInTheDocument();
   });
 
   it('calls onSortChange when a sortable header is clicked', async () => {
@@ -49,10 +49,13 @@ describe('DataTable', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /Name/i }));
-    expect(onSortChange).toHaveBeenCalledWith({
-      sortBy: 'name',
-      sortOrder: 'asc',
+    const sortButton = await screen.findByRole('button', { name: /Sort by Name/i });
+    await user.click(sortButton);
+    await waitFor(() => {
+      expect(onSortChange).toHaveBeenCalledWith({
+        sortBy: 'name',
+        sortOrder: 'asc',
+      });
     });
   });
 });

@@ -17,6 +17,7 @@ import { serveUploadMiddleware } from './middleware/serveUpload.js';
 import { metricsMiddleware, registry } from './observability/metrics.js';
 import { sentryEnabled, Sentry } from './observability/sentry.js';
 import v1Router from './routes/index.js';
+import { isPrivateNetworkOrigin } from './utils/privateNetworkOrigin.js';
 
 const app = express();
 
@@ -92,6 +93,10 @@ app.use(
       }
       const normalized = origin.replace(/\/$/, '');
       if (config.corsOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      // Dev: allow Vite Local + Network URLs (LAN IP / localhost over http(s)).
+      if (config.isDevelopment && isPrivateNetworkOrigin(normalized)) {
         return callback(null, true);
       }
       return callback(null, false);

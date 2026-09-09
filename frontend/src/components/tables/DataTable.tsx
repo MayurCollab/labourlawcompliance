@@ -1,11 +1,28 @@
-import type { ReactNode } from 'react';
+import {
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from 'react';
+import {
+  ModuleRegistry,
+  AllCommunityModule,
+  type ColDef,
+  type ICellRendererParams,
+  type IHeaderParams,
+  type SortDirection as AgSortDirection,
+} from 'ag-grid-community';
+import { AgGridReact } from 'ag-grid-react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/EmptyState';
-import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { SkeletonTableRow } from '@/components/common/SkeletonLoader';
+import { appAgGridTheme } from '@/components/tables/agGridTheme';
+import { DataTableLoading } from '@/components/tables/DataTableLoading';
 import { Pagination } from '@/components/tables/Pagination';
+import type { DataTablePageSizeOption } from '@/components/tables/pagination.constants';
+import { toPageSizeOption } from '@/components/tables/pagination.constants';
 import { cn } from '@/lib/utils';
+
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 export type SortDirection = 'asc' | 'desc';
 
@@ -18,6 +35,9 @@ export type DataTableColumn<T> = {
   sortable?: boolean;
   className?: string;
   headerClassName?: string;
+  width?: number;
+  minWidth?: number;
+  maxWidth?: number;
 };
 
 export type DataTableSort = {
@@ -41,6 +61,9 @@ export type DataTableProps<T> = {
   onSortChange?: (sort: DataTableSort) => void;
   pagination?: DataTablePagination;
   onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: DataTablePageSizeOption) => void;
+  /** Explicit page-size select value (use when limit is the “All” sentinel). */
+  pageSizeSelection?: DataTablePageSizeOption;
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
@@ -56,21 +79,27 @@ const getValue = <T,>(row: T, key?: string): ReactNode => {
   return '—';
 };
 
-export function DataTable<T>({
-  columns,
-  data,
-  rowKey,
-  loading = false,
+type SortHeaderProps = IHeaderParams & {
+  label: ReactNode;
+  columnId: string;
+  sortable?: boolean;
+  sort?: DataTableSort;
+  onSortChange?: (sort: DataTableSort) => void;
+};
+
+function SortHeader({
+  label,
+  columnId,
+  sortable,
   sort,
   onSortChange,
-  pagination,
-  onPageChange,
-  emptyTitle = 'No results',
-  emptyDescription = 'Try adjusting filters or create a new record.',
-  className,
-}: DataTableProps<T>) {
-  const toggleSort = (columnId: string) => {
-    if (!onSortChange) return;
+}: SortHeaderProps) {
+  if (!sortable || !onSortChange) {
+    return <span className="truncate">{label}</span>;
+  }
+
+  const isSorted = sort?.sortBy === columnId;
+  const toggleSort = () => {
     if (sort?.sortBy === columnId) {
       onSortChange({
         sortBy: columnId,
@@ -82,114 +111,162 @@ export function DataTable<T>({
   };
 
   return (
+    <button
+      type="button"
+      className="llc-ag-sort-button"
+      aria-label={
+        typeof label === 'string' ? `Sort by ${label}` : `Sort by ${columnId}`
+      }
+      onClick={toggleSort}
+    >
+      <span className="truncate">{label}</span>
+      {isSorted ? (
+        sort.sortOrder === 'asc' ? (
+          <ArrowUp className="llc-ag-sort-icon is-active" aria-hidden />
+        ) : (
+          <ArrowDown className="llc-ag-sort-icon is-active" aria-hidden />
+        )
+      ) : (
+        <ArrowUpDown className="llc-ag-sort-icon" aria-hidden />
+      )}
+    </button>
+  );
+}
+
+function NoRowsOverlay({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return <EmptyState title={title} description={description} />;
+}
+
+export function DataTable<T>({
+  columns,
+  data,
+  rowKey,
+  loading = false,
+  sort,
+  onSortChange,
+  pagination,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeSelection,
+  emptyTitle = 'No results',
+  emptyDescription = 'Try adjusting filters or create a new record.',
+  className,
+}: DataTableProps<T>) {
+  const columnDefs = useMemo<ColDef<T>[]>(
+    () =>
+      columns.map((column) => {
+        const canSort = Boolean(column.sortable && onSortChange);
+        const sortDir: AgSortDirection | undefined =
+          sort?.sortBy === column.id ? sort.sortOrder : undefined;
+
+        const isActions = column.id === 'actions';
+        const isSelect = column.id === 'select';
+        const defaultMinWidth = isActions ? 168 : isSelect ? 52 : 120;
+        const defaultWidth = isActions ? 180 : isSelect ? 56 : undefined;
+
+        const def: ColDef<T> = {
+          colId: column.id,
+          headerName: typeof column.header === 'string' ? column.header : column.id,
+          sortable: false,
+          suppressHeaderMenuButton: true,
+          suppressMovable: true,
+          resizable: true,
+          flex: isActions || isSelect || column.width ? 0 : 1,
+          minWidth: column.minWidth ?? defaultMinWidth,
+          maxWidth: column.maxWidth,
+          width: column.width ?? defaultWidth,
+          sort: sortDir,
+          headerClass: cn(column.headerClassName),
+          cellClass: cn(
+            column.className,
+            isActions && 'llc-ag-actions-cell',
+          ),
+          headerComponent: SortHeader,
+          headerComponentParams: {
+            label: column.header,
+            columnId: column.id,
+            sortable: canSort,
+            sort,
+            onSortChange,
+          },
+          cellRenderer: (params: ICellRendererParams<T>) => {
+            if (!params.data) return null;
+            if (column.cell) return column.cell(params.data);
+            return getValue(params.data, column.accessorKey);
+          },
+          comparator: () => 0,
+        };
+
+        if (column.accessorKey) {
+          def.field = column.accessorKey as unknown as ColDef<T>['field'];
+        }
+
+        return def;
+      }),
+    [columns, onSortChange, sort],
+  );
+
+  const getRowId = useCallback(
+    (params: { data: T }) => rowKey(params.data),
+    [rowKey],
+  );
+
+  const resolvedPageSize =
+    pageSizeSelection ??
+    (pagination
+      ? toPageSizeOption(pagination.limit, pagination.total)
+      : undefined);
+
+  const loadingLabels = columns.map((column) =>
+    typeof column.header === 'string' ? column.header : column.id,
+  );
+
+  return (
     <div className={cn('space-y-4', className)}>
-      <div className="overflow-hidden rounded-xl border border-border">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                {columns.map((column) => {
-                  const isSorted = sort?.sortBy === column.id;
-                  return (
-                    <th
-                      key={column.id}
-                      aria-sort={
-                        column.sortable
-                          ? isSorted
-                            ? sort.sortOrder === 'asc'
-                              ? 'ascending'
-                              : 'descending'
-                            : 'none'
-                          : undefined
-                      }
-                      className={cn(
-                        'px-4 py-3 text-left font-medium text-muted-foreground',
-                        column.headerClassName,
-                      )}
-                    >
-                      {column.sortable && onSortChange ? (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 hover:text-foreground"
-                          aria-label={
-                            typeof column.header === 'string'
-                              ? `Sort by ${column.header}`
-                              : `Sort by ${column.id}`
-                          }
-                          onClick={() => toggleSort(column.id)}
-                        >
-                          {column.header}
-                          {isSorted ? (
-                            sort.sortOrder === 'asc' ? (
-                              <ArrowUp className="size-3.5" aria-hidden />
-                            ) : (
-                              <ArrowDown className="size-3.5" aria-hidden />
-                            )
-                          ) : (
-                            <ArrowUpDown
-                              className="size-3.5 opacity-50"
-                              aria-hidden
-                            />
-                          )}
-                        </button>
-                      ) : (
-                        column.header
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={columns.length} className="p-0">
-                    <div className="space-y-0">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <SkeletonTableRow
-                          key={index}
-                          columns={columns.length}
-                        />
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length} className="p-6">
-                    <EmptyState
-                      title={emptyTitle}
-                      description={emptyDescription}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                data.map((row) => (
-                  <tr
-                    key={rowKey(row)}
-                    className="border-t border-border hover:bg-muted/30"
-                  >
-                    {columns.map((column) => (
-                      <td
-                        key={column.id}
-                        className={cn('px-4 py-3 align-middle', column.className)}
-                      >
-                        {column.cell
-                          ? column.cell(row)
-                          : getValue(row, column.accessorKey)}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="llc-ag-grid-shell">
         {loading ? (
-          <div className="flex items-center justify-center border-t border-border py-2">
-            <LoadingSpinner size="sm" />
+          <DataTableLoading
+            columnCount={columns.length}
+            columnLabels={loadingLabels}
+            rowCount={7}
+          />
+        ) : (
+          <div
+            className="llc-ag-grid"
+            style={{
+              width: '100%',
+              minHeight: data.length === 0 ? 220 : undefined,
+            }}
+          >
+            <AgGridReact<T>
+              theme={appAgGridTheme}
+              rowData={data}
+              columnDefs={columnDefs}
+              getRowId={getRowId}
+              domLayout="autoHeight"
+              animateRows
+              suppressCellFocus
+              suppressDragLeaveHidesColumns
+              suppressColumnVirtualisation
+              suppressRowVirtualisation
+              enableCellTextSelection
+              ensureDomOrder
+              headerHeight={44}
+              rowHeight={48}
+              noRowsOverlayComponent={NoRowsOverlay}
+              noRowsOverlayComponentParams={{
+                title: emptyTitle,
+                description: emptyDescription,
+              }}
+            />
           </div>
-        ) : null}
+        )}
       </div>
 
       {pagination && onPageChange ? (
@@ -198,7 +275,9 @@ export function DataTable<T>({
           totalPages={pagination.totalPages}
           total={pagination.total}
           pageSize={pagination.limit}
+          pageSizeSelection={resolvedPageSize}
           onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
           disabled={loading}
         />
       ) : null}

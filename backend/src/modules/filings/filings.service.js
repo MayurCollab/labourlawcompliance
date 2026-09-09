@@ -30,6 +30,7 @@ import {
   buildComputationFromMaster,
   buildForm5Values,
   form5Filename,
+  periodBounds,
 } from './form5Values.js';
 import {
   employeeCountsForList,
@@ -49,23 +50,6 @@ const blankToNull = (value) => {
   if (value instanceof Date) return value;
   const cleaned = sanitizeUserHtml(String(value).trim());
   return cleaned === '' ? null : cleaned;
-};
-
-const dateStamp = (value) => {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return stringifyCell(date);
-};
-
-const sameValue = (left, right) => {
-  if (left instanceof Date || right instanceof Date) {
-    return dateStamp(left) === dateStamp(right);
-  }
-  if (typeof left === 'number' || typeof right === 'number') {
-    return Number(left ?? NaN) === Number(right ?? NaN) || (left == null && right == null);
-  }
-  return (left ?? null) === (right ?? null);
 };
 
 const toFilingDtoWithHint = async (filing, extras = {}) => {
@@ -208,6 +192,7 @@ const toMonthlyPayload = (fields, periodLabel) => {
 
 /**
  * Upsert a monthly filing stub. Rows absent from the file are kept.
+ * Match by (client, period) only, then replace monthly fields from the sheet.
  * Optional `cache.filingsByKey` skips per-row finds during MasterSheet import.
  */
 export const upsertFromMasterRow = async ({
@@ -223,18 +208,23 @@ export const upsertFromMasterRow = async ({
   }
 
   const payload = toMonthlyPayload(fields, periodLabel);
-  const key = filingCacheKey(client.id, period);
+  const key = filingCacheKey(client.id || client._id, period);
   let existing =
     cache?.filingsByKey?.get(key) ??
-    (await filingsRepository.findFilingByClientAndPeriod(client.id, period));
+    (await filingsRepository.findFilingByClientAndPeriod(
+      client.id || client._id,
+      period,
+    ));
 
   if (!existing) {
     try {
       const filing = await filingsRepository.createFiling({
-        client: client.id,
+        client: client.id || client._id,
         clientCode: client.clientCode,
         period,
-        ...Object.fromEntries(MONTHLY_FIELDS.map((key) => [key, payload[key] ?? null])),
+        ...Object.fromEntries(
+          MONTHLY_FIELDS.map((field) => [field, payload[field] ?? null]),
+        ),
         createdBy: actorId,
       });
       rememberFiling(cache, filing);
@@ -242,7 +232,7 @@ export const upsertFromMasterRow = async ({
     } catch (err) {
       if (err?.code !== 11000) throw err;
       existing = await filingsRepository.findFilingByClientAndPeriod(
-        client.id,
+        client.id || client._id,
         period,
       );
       if (!existing) throw err;
@@ -252,23 +242,148 @@ export const upsertFromMasterRow = async ({
 
   for (const field of MONTHLY_FIELDS) {
     if (payload[field] === undefined) continue;
-    if (!sameValue(existing[field], payload[field])) {
-      existing[field] = payload[field];
-    }
-  }
-
-  const changedFields = existing
-    .modifiedPaths()
-    .filter((field) => field !== 'updatedBy');
-  if (changedFields.length === 0) {
-    rememberFiling(cache, existing);
-    return { outcome: 'unchanged', filing: existing };
+    existing[field] = payload[field];
   }
 
   existing.updatedBy = actorId;
   await filingsRepository.saveFiling(existing);
   rememberFiling(cache, existing);
   return { outcome: 'updated', filing: existing };
+};
+
+/**
+ * Unique (client, period) match → bulk replace monthly filing fields.
+ */
+export const bulkUpsertFilingsFromMaster = async ({
+  rows,
+  actorId,
+  cache,
+  chunkSize = 500,
+  onChunk,
+}) => {
+  const report = { inserted: 0, updated: 0, unchanged: 0, skipped: [] };
+
+  /** @type {Map<string, object>} */
+  const byKey = new Map();
+
+  for (const row of rows) {
+    const { client, fields, period, periodLabel, excelRow } = row;
+    if (!period) {
+      report.skipped.push({
+        row: excelRow,
+        reason: 'Missing or unrecognised month',
+      });
+      continue;
+    }
+
+    const clientId = client.id || client._id;
+    const key = filingCacheKey(clientId, period);
+    const payload = toMonthlyPayload(fields, periodLabel);
+    const existing = cache?.filingsByKey?.get(key) ?? null;
+
+    byKey.set(key, {
+      client,
+      clientId,
+      period,
+      payload,
+      existing,
+      excelRow,
+    });
+  }
+
+  const writeRows = [...byKey.values()];
+  const ops = [];
+  const meta = [];
+
+  for (const row of writeRows) {
+    const monthlySet = Object.fromEntries(
+      MONTHLY_FIELDS.map((field) => [field, row.payload[field] ?? null]),
+    );
+
+    if (row.existing?._id) {
+      ops.push({
+        updateOne: {
+          filter: { _id: row.existing._id },
+          update: {
+            $set: {
+              ...monthlySet,
+              clientCode: row.client.clientCode,
+              updatedBy: actorId,
+              updatedAt: new Date(),
+            },
+          },
+        },
+      });
+      meta.push({ kind: 'update', row });
+    } else {
+      ops.push({
+        updateOne: {
+          filter: {
+            client: row.clientId,
+            period: row.period,
+            isDeleted: false,
+          },
+          update: {
+            $set: {
+              ...monthlySet,
+              client: row.clientId,
+              clientCode: row.client.clientCode,
+              period: row.period,
+              updatedBy: actorId,
+              updatedAt: new Date(),
+            },
+            $setOnInsert: {
+              createdBy: actorId,
+              createdAt: new Date(),
+              isDeleted: false,
+              deletedAt: null,
+            },
+          },
+          upsert: true,
+        },
+      });
+      meta.push({ kind: 'insert', row });
+    }
+  }
+
+  let written = 0;
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    const opChunk = ops.slice(i, i + chunkSize);
+    const metaChunk = meta.slice(i, i + chunkSize);
+    if (opChunk.length) {
+      await filingsRepository.bulkWriteFilings(opChunk);
+    }
+
+    for (const item of metaChunk) {
+      if (item.kind === 'insert') report.inserted += 1;
+      else report.updated += 1;
+
+      if (item.row.existing) {
+        Object.assign(item.row.existing, item.row.payload, {
+          updatedBy: actorId,
+        });
+        rememberFiling(cache, item.row.existing);
+      } else {
+        rememberFiling(cache, {
+          client: item.row.clientId,
+          period: item.row.period,
+          clientCode: item.row.client.clientCode,
+          ...item.row.payload,
+        });
+      }
+    }
+
+    written += metaChunk.length;
+    if (onChunk) {
+      onChunk({ written, writeTotal: ops.length, report });
+    }
+  }
+
+  if (!ops.length && onChunk) {
+    onChunk({ written: 0, writeTotal: 0, report });
+  }
+
+  return report;
 };
 
 const findFilingOrFail = async (id) => {
@@ -445,7 +560,9 @@ export const generateFiling = async (id, actorId, options = {}) => {
     });
   }
 
-  if (!filing.computation && computeIfNeeded) {
+  // Always recompute from salary when asked — stale master/empty computation
+  // left Form 5 slabs blank even when the employee list had rows.
+  if (computeIfNeeded) {
     try {
       await computeFiling(id, actorId);
       filing = await findFilingOrFail(id);
@@ -539,9 +656,11 @@ export const generateFiling = async (id, actorId, options = {}) => {
     });
 
     const filename = form5Filename({
+      companyName: client.companyName,
       clientCode: filing.clientCode,
       locationName: client.location?.name,
       period: filing.period,
+      periodLabel: filing.periodLabel || periodBounds(filing.period).label,
       ext,
     });
     const stored = await storage.saveDocument({

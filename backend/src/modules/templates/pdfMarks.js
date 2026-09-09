@@ -1,3 +1,4 @@
+import './canvasPolyfill.js';
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const hexToRgb = (hex) => {

@@ -1,6 +1,8 @@
 import { sanitizeUserHtml } from '../../utils/sanitize.js';
 import { normalizeClientCode } from '../clients/clients.constants.js';
 import * as clientsRepository from '../clients/clients.repository.js';
+import { periodToDate, resolvePTax } from '../filings/ptCompute.js';
+import * as ptSlabsService from '../ptSlabs/ptSlabs.service.js';
 import {
   employeeCacheKey,
   rememberEmployee,
@@ -22,13 +24,6 @@ const blankToNull = (value) => {
   const cleaned = sanitizeUserHtml(String(value).trim());
   return cleaned === '' ? null : cleaned;
 };
-
-const sameNumber = (left, right) => {
-  if (left == null && right == null) return true;
-  return Number(left) === Number(right);
-};
-
-const sameText = (left, right) => (left ?? null) === (right ?? null);
 
 const isDuplicateKey = (err) => err?.code === 11000;
 
@@ -157,19 +152,19 @@ export const matchClientForSalaryRow = (
 };
 
 /**
- * Upsert one employee-month row. PHY_CODE and Client code are optional.
- * Unmatched rows still insert (client null); rows absent from the file are kept.
- * Optional `cache` skips per-row employee finds and uses Map client matching.
+ * Build a salary employee-month document from one sheet row.
+ * Match key is (employeeNo, phyCode, period). Does not write to the DB.
+ * PT GROSS is optional. P.Tax = slab rate from gross, or ₹200 when gross is blank.
  */
-export const upsertFromSalaryRow = async ({
+export const prepareSalaryUpsert = ({
   fields,
   period,
   periodLabel,
   clients,
   companyName,
   uploadId,
-  actorId,
   cache = null,
+  slabs = [],
 }) => {
   const employeeNo = stringifyCell(fields.employeeNo);
   if (!employeeNo) {
@@ -184,9 +179,6 @@ export const upsertFromSalaryRow = async ({
   }
 
   const ptGross = parseAmount(fields.ptGross);
-  if (ptGross === null) {
-    return { outcome: 'skipped', reason: 'Missing PT GROSS' };
-  }
 
   const rawPhy = normalizePhyCode(fields.phyCode);
   const rawClientCode = normalizeClientCode(fields.clientCode);
@@ -212,6 +204,10 @@ export const upsertFromSalaryRow = async ({
   phyCode = phyCode || '';
 
   const reportUnmatched = unmatched && !omittedIdentity;
+  const cacheKey = employeeCacheKey(employeeNo, phyCode, period);
+  const existing = cache?.employeesByKey?.get(cacheKey) ?? null;
+
+  const pTax = resolvePTax(slabs, ptGross);
 
   const payload = {
     client: clientId,
@@ -224,16 +220,66 @@ export const upsertFromSalaryRow = async ({
     locationName: blankToNull(fields.locationName) ?? null,
     state: blankToNull(fields.state) ?? null,
     ptGross,
-    pTax: fields.pTax === undefined ? undefined : parseAmount(fields.pTax),
+    pTax,
     unmatched,
     unmatchedReason: unmatched && !omittedIdentity ? unmatchedReason : null,
     upload: uploadId ?? null,
   };
 
-  const cacheKey = employeeCacheKey(employeeNo, phyCode, period);
+  return {
+    outcome: 'ready',
+    cacheKey,
+    existing,
+    payload,
+    reportUnmatched,
+    unmatchedReason,
+  };
+};
+
+/**
+ * Upsert one employee-month row by unique key only, then replace the full row.
+ * PHY_CODE and Client code are optional. Unmatched rows still insert (client null).
+ */
+export const upsertFromSalaryRow = async ({
+  fields,
+  period,
+  periodLabel,
+  clients,
+  companyName,
+  uploadId,
+  actorId,
+  cache = null,
+  slabs = null,
+}) => {
+  const resolvedSlabs =
+    slabs ??
+    (await ptSlabsService.listEffectiveSlabs(
+      periodToDate(period) || new Date(),
+    ));
+
+  const prepared = prepareSalaryUpsert({
+    fields,
+    period,
+    periodLabel,
+    clients,
+    companyName,
+    uploadId,
+    cache,
+    slabs: resolvedSlabs,
+  });
+
+  if (prepared.outcome === 'skipped') {
+    return { outcome: 'skipped', reason: prepared.reason };
+  }
+
+  const { payload, reportUnmatched, unmatchedReason, cacheKey } = prepared;
   let existing =
-    cache?.employeesByKey?.get(cacheKey) ??
-    (await employeesRepository.findEmployeeByKey(employeeNo, phyCode, period));
+    prepared.existing ??
+    (await employeesRepository.findEmployeeByKey(
+      payload.employeeNo,
+      payload.phyCode,
+      payload.period,
+    ));
 
   if (!existing) {
     try {
@@ -249,50 +295,26 @@ export const upsertFromSalaryRow = async ({
         employee,
       };
     } catch (err) {
-      // Concurrent salary imports (or a partial prior run) can race the
-      // unique (employeeNo, phyCode, period) index — treat as update.
       if (!isDuplicateKey(err)) throw err;
       existing = await employeesRepository.findEmployeeByKey(
-        employeeNo,
-        phyCode,
-        period,
+        payload.employeeNo,
+        payload.phyCode,
+        payload.period,
       );
       if (!existing) throw err;
       rememberEmployee(cache, existing);
     }
   }
 
-  const nextPTax =
-    payload.pTax === undefined ? existing.pTax : payload.pTax;
-
-  const changed =
-    String(existing.client ?? '') !== String(clientId ?? '') ||
-    !sameText(existing.clientCode, clientCode) ||
-    !sameText(existing.employeeName, payload.employeeName) ||
-    !sameText(existing.locationName, payload.locationName) ||
-    !sameText(existing.state, payload.state) ||
-    !sameNumber(existing.ptGross, payload.ptGross) ||
-    !sameNumber(existing.pTax, nextPTax) ||
-    existing.unmatched !== unmatched ||
-    !sameText(existing.unmatchedReason, payload.unmatchedReason) ||
-    !sameText(existing.periodLabel, payload.periodLabel);
-
-  if (!changed) {
-    rememberEmployee(cache, existing);
-    return {
-      outcome: reportUnmatched ? 'unmatched' : 'unchanged',
-      employee: existing,
-    };
-  }
-
-  existing.client = clientId;
-  existing.clientCode = clientCode;
+  // Unique-key match → replace the full salary row (no field-by-field skip).
+  existing.client = payload.client;
+  existing.clientCode = payload.clientCode;
   existing.employeeName = payload.employeeName;
   existing.locationName = payload.locationName;
   existing.state = payload.state;
   existing.ptGross = payload.ptGross;
-  if (payload.pTax !== undefined) existing.pTax = payload.pTax;
-  existing.unmatched = unmatched;
+  existing.pTax = payload.pTax;
+  existing.unmatched = payload.unmatched;
   existing.unmatchedReason = payload.unmatchedReason;
   existing.periodLabel = payload.periodLabel;
   existing.upload = uploadId ?? existing.upload;
@@ -305,6 +327,164 @@ export const upsertFromSalaryRow = async ({
     reason: reportUnmatched ? unmatchedReason : undefined,
     employee: existing,
   };
+};
+
+/**
+ * Match by unique (employeeNo, phyCode, period) and bulk-replace full rows.
+ * Later duplicate keys in the same sheet win. Rows absent from the file are kept.
+ */
+export const bulkUpsertSalaryRows = async ({
+  rows,
+  period,
+  periodLabel,
+  clients,
+  companyName,
+  uploadId,
+  actorId,
+  cache,
+  chunkSize = 500,
+  onChunk,
+  slabs = null,
+}) => {
+  const report = {
+    inserted: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: [],
+    unmatched: [],
+  };
+
+  const resolvedSlabs =
+    slabs ??
+    (await ptSlabsService.listEffectiveSlabs(
+      periodToDate(period) || new Date(),
+    ));
+
+  /** @type {Map<string, object>} */
+  const byKey = new Map();
+
+  for (const { fields, excelRow } of rows) {
+    const prepared = prepareSalaryUpsert({
+      fields,
+      period,
+      periodLabel,
+      clients,
+      companyName,
+      uploadId,
+      cache,
+      slabs: resolvedSlabs,
+    });
+
+    if (prepared.outcome === 'skipped') {
+      report.skipped.push({ row: excelRow, reason: prepared.reason });
+      continue;
+    }
+
+    byKey.set(prepared.cacheKey, { ...prepared, excelRow, fields });
+  }
+
+  const writeRows = [...byKey.values()];
+  const ops = [];
+  const meta = [];
+
+  for (const row of writeRows) {
+    const setDoc = {
+      ...row.payload,
+      updatedBy: actorId,
+      updatedAt: new Date(),
+    };
+
+    if (row.existing?._id) {
+      ops.push({
+        updateOne: {
+          filter: { _id: row.existing._id },
+          update: { $set: setDoc },
+        },
+      });
+      meta.push({ kind: 'update', row });
+    } else {
+      ops.push({
+        updateOne: {
+          filter: {
+            employeeNo: row.payload.employeeNo,
+            phyCode: row.payload.phyCode,
+            period: row.payload.period,
+            isDeleted: false,
+          },
+          update: {
+            $set: setDoc,
+            $setOnInsert: {
+              createdBy: actorId,
+              createdAt: new Date(),
+              isDeleted: false,
+              deletedAt: null,
+            },
+          },
+          upsert: true,
+        },
+      });
+      meta.push({ kind: 'insert', row });
+    }
+  }
+
+  let written = 0;
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    const opChunk = ops.slice(i, i + chunkSize);
+    const metaChunk = meta.slice(i, i + chunkSize);
+    if (opChunk.length) {
+      await employeesRepository.bulkWriteEmployees(opChunk);
+    }
+
+    for (const item of metaChunk) {
+      const { row } = item;
+      if (row.reportUnmatched) {
+        report.unmatched.push({
+          row: row.excelRow,
+          employeeNo: stringifyCell(row.fields.employeeNo),
+          phyCode: stringifyCell(row.fields.phyCode),
+          clientCode: stringifyCell(row.fields.clientCode),
+          reason: row.unmatchedReason,
+        });
+      } else if (item.kind === 'insert') {
+        report.inserted += 1;
+      } else {
+        report.updated += 1;
+      }
+
+      // Keep cache coherent for any follow-up work in the same request.
+      if (row.existing) {
+        Object.assign(row.existing, row.payload, { updatedBy: actorId });
+        rememberEmployee(cache, row.existing);
+      } else {
+        rememberEmployee(cache, {
+          ...row.payload,
+          id: undefined,
+          _id: undefined,
+        });
+      }
+    }
+
+    written += metaChunk.length;
+    if (onChunk) {
+      onChunk({
+        written,
+        writeTotal: ops.length,
+        skipped: report.skipped.length,
+        report,
+      });
+    }
+  }
+
+  if (!ops.length && onChunk) {
+    onChunk({
+      written: 0,
+      writeTotal: 0,
+      skipped: report.skipped.length,
+      report,
+    });
+  }
+
+  return report;
 };
 
 /**
@@ -323,8 +503,7 @@ export const rematchUnmatchedEmployees = async (actorId) => {
     if (code) clientsByCode.set(code, client);
   }
 
-  let rematched = 0;
-  const pending = [];
+  const ops = [];
   for (const employee of rows) {
     const { client } = matchClientForSalaryRow(
       clients,
@@ -335,19 +514,26 @@ export const rematchUnmatchedEmployees = async (actorId) => {
       clientsByCode,
     );
     if (!client) continue;
-    employee.client = client.id || client._id;
-    employee.clientCode = client.clientCode;
-    employee.unmatched = false;
-    employee.unmatchedReason = null;
-    employee.updatedBy = actorId;
-    pending.push(employeesRepository.saveEmployee(employee));
-    rematched += 1;
+    ops.push({
+      updateOne: {
+        filter: { _id: employee._id },
+        update: {
+          $set: {
+            client: client.id || client._id,
+            clientCode: client.clientCode,
+            unmatched: false,
+            unmatchedReason: null,
+            updatedBy: actorId,
+          },
+        },
+      },
+    });
   }
 
-  const chunkSize = 50;
-  for (let i = 0; i < pending.length; i += chunkSize) {
-    await Promise.all(pending.slice(i, i + chunkSize));
+  const chunkSize = 500;
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    await employeesRepository.bulkWriteEmployees(ops.slice(i, i + chunkSize));
   }
 
-  return rematched;
+  return ops.length;
 };

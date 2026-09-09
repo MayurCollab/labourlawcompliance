@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { filingsApi } from '@/api/filings.api';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
@@ -11,7 +12,9 @@ import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
@@ -29,6 +32,12 @@ import type {
   Filing,
   ListFilingsParams,
 } from '@/types/filing.types';
+import { getApiErrorMessage } from '@/utils/apiError';
+import {
+  canPickDownloadFolder,
+  downloadFilesToFolder,
+} from '@/utils/folderDownload';
+import { toastError, toastSuccess } from '@/utils/toast';
 
 const formatAmount = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : value.toLocaleString('en-IN');
@@ -64,6 +73,7 @@ export function FilingsPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<FilterValues>(emptyFilters);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(50);
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'clientCode',
     sortOrder: 'asc',
@@ -74,6 +84,7 @@ export function FilingsPage() {
   const [bulkPayload, setBulkPayload] = useState<BulkGeneratePayload | null>(
     null,
   );
+  const [bulkDownloading, setBulkDownloading] = useState(false);
 
   const queryClient = useQueryClient();
   const locationsQuery = useLocationsQuery();
@@ -83,6 +94,101 @@ export function FilingsPage() {
   const startBulk = (payload: BulkGeneratePayload) => {
     setBulkPayload(payload);
     setBulkOpen(true);
+  };
+
+  const downloadableFromRows = (list: Filing[]) =>
+    list.filter((row) => Boolean(row.generatedFile?.filename));
+
+  const runMultiDownload = async (
+    items: { id: string; filename: string }[],
+  ) => {
+    if (!items.length) {
+      toastError('No generated Form 5 files to download');
+      return;
+    }
+    try {
+      const result = await downloadFilesToFolder(
+        items.map((item) => ({
+          id: item.id,
+          filename: item.filename,
+          getBlob: async () => {
+            const file = await filingsApi.fetchDownloadBlob(item.id, {
+              filename: item.filename,
+            });
+            return file.blob;
+          },
+        })),
+      );
+      toastSuccess(
+        result.mode === 'folder'
+          ? `Saved ${result.saved} file(s) to the selected folder`
+          : `Downloaded ZIP with ${result.saved} file(s)`,
+      );
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') {
+        toastError('Folder selection cancelled');
+      } else {
+        toastError(getApiErrorMessage(err, 'Could not download Form 5 files'));
+      }
+    }
+  };
+
+  const downloadSelectedGenerated = async () => {
+    setBulkDownloading(true);
+    try {
+      await runMultiDownload(
+        selectedDownloadable.map((row) => ({
+          id: row.id,
+          filename:
+            row.generatedFile?.filename || `${row.clientCode}_Form5.pdf`,
+        })),
+      );
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
+  const downloadAllGeneratedForFilters = async () => {
+    if (!period) {
+      toastError('Pick a month first');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      const collected: { id: string; filename: string }[] = [];
+      let page = 1;
+      let totalPages = 1;
+      while (page <= totalPages) {
+        const result = await filingsApi.list({
+          page,
+          limit: 200,
+          search: search || undefined,
+          period,
+          locationId: locationId || undefined,
+          clientId: clientId || undefined,
+          generateStatus: 'generated',
+          sortBy: 'clientCode',
+          sortOrder: 'asc',
+        });
+        totalPages = result.pagination.totalPages;
+        for (const row of result.filings) {
+          if (row.generatedFile?.filename) {
+            collected.push({
+              id: row.id,
+              filename: row.generatedFile.filename,
+            });
+          }
+        }
+        page += 1;
+      }
+      await runMultiDownload(collected);
+    } catch (err) {
+      toastError(
+        getApiErrorMessage(err, 'Could not load generated Form 5 files'),
+      );
+    } finally {
+      setBulkDownloading(false);
+    }
   };
 
   const locationId =
@@ -101,7 +207,7 @@ export function FilingsPage() {
 
   const params: ListFilingsParams = {
     page,
-    limit: 50,
+    limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     period: period || undefined,
     locationId: locationId || undefined,
@@ -113,6 +219,10 @@ export function FilingsPage() {
 
   const filingsQuery = useFilingsQuery(params);
   const rows = filingsQuery.data?.filings ?? [];
+  const selectedDownloadable = useMemo(
+    () => downloadableFromRows(rows.filter((row) => selectedIds.has(row.id))),
+    [rows, selectedIds],
+  );
   const pageIds = rows.map((row) => row.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
@@ -235,6 +345,8 @@ export function FilingsPage() {
         id: 'actions',
         header: '',
         className: 'text-right',
+        width: 260,
+        minWidth: 220,
         cell: (row) => (
           <div className="flex justify-end gap-2">
             <Button
@@ -279,7 +391,7 @@ export function FilingsPage() {
     ],
   );
 
-  const busy = bulkOpen;
+  const busy = bulkOpen || bulkDownloading;
   const matchingTotal = filingsQuery.data?.pagination.total ?? 0;
 
   return (
@@ -392,6 +504,29 @@ export function FilingsPage() {
             Generate this month
           </Button>
         </PermissionGate>
+        <PermissionGate permission={PERMISSIONS.FILINGS_VIEW}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={selectedDownloadable.length === 0 || busy}
+            loading={bulkDownloading}
+            onClick={() => void downloadSelectedGenerated()}
+          >
+            {canPickDownloadFolder()
+              ? `Choose folder (${selectedDownloadable.length})`
+              : `Download ZIP (${selectedDownloadable.length})`}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!period || busy}
+            loading={bulkDownloading}
+            onClick={() => void downloadAllGeneratedForFilters()}
+          >
+            Download all generated
+              {canPickDownloadFolder() ? '' : ' (ZIP)'}
+          </Button>
+        </PermissionGate>
       </div>
 
       <DataTable
@@ -407,6 +542,11 @@ export function FilingsPage() {
         pagination={filingsQuery.data?.pagination}
         onPageChange={(nextPage) => {
           setPage(nextPage);
+        }}
+        pageSizeSelection={pageSize}
+        onPageSizeChange={(size) => {
+          setPage(1);
+          setPageSize(size);
         }}
         emptyTitle="No filings for these filters"
         emptyDescription="Pick a month (and optional location / client). Import a MasterSheet if the month is empty."

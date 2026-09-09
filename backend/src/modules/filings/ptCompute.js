@@ -5,6 +5,9 @@
 
 export const VARIANCE_LIMIT = 50;
 
+/** When salary PT GROSS is blank, P.Tax is this fixed rate. */
+export const DEFAULT_PT_WITHOUT_GROSS = 200;
+
 const asNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
@@ -35,6 +38,39 @@ export const findSlabForGross = (slabs, ptGross) => {
   );
 };
 
+/** Open-ended top band used when PT GROSS is missing (fixed ₹200). */
+export const findDefaultPtSlab = (slabs = []) => {
+  const openEnded = (slabs || []).find(
+    (slab) => asNumber(slab.salaryTo) === null,
+  );
+  if (openEnded) return openEnded;
+  return (
+    (slabs || []).find(
+      (slab) => asNumber(slab.rate) === DEFAULT_PT_WITHOUT_GROSS,
+    ) ?? null
+  );
+};
+
+/**
+ * Pick the slab for an employee. Missing PT GROSS → top open slab / ₹200.
+ */
+export const findSlabForEmployee = (slabs, ptGross) => {
+  const amount = asNumber(ptGross);
+  if (amount === null) return findDefaultPtSlab(slabs);
+  return findSlabForGross(slabs, amount);
+};
+
+/**
+ * P.Tax for salary/Form 5: slab rate from PT GROSS, or ₹200 when gross is blank.
+ */
+export const resolvePTax = (slabs, ptGross) => {
+  const amount = asNumber(ptGross);
+  if (amount === null) return DEFAULT_PT_WITHOUT_GROSS;
+  const slab = findSlabForGross(slabs, amount);
+  if (slab?.rate !== undefined && slab?.rate !== null) return slab.rate;
+  return null;
+};
+
 const emptyBucket = (slab) => ({
   label: slab.label || '',
   salaryFrom: slab.salaryFrom,
@@ -48,7 +84,7 @@ const emptyBucket = (slab) => ({
 
 /**
  * Bucket matched employees by PT GROSS. Tax uses the slab rate, not sheet P_TAX.
- * Sheet P_TAX is kept only to flag variances.
+ * Blank PT GROSS uses the open-ended (₹200) band. Sheet P_TAX flags variances only.
  */
 export const computePt = (slabs, employees = []) => {
   const buckets = (slabs || []).map(emptyBucket);
@@ -63,7 +99,7 @@ export const computePt = (slabs, employees = []) => {
       continue;
     }
 
-    const slab = findSlabForGross(slabs, employee.ptGross);
+    const slab = findSlabForEmployee(slabs, employee.ptGross);
     if (!slab) {
       unslottedCount += 1;
       continue;

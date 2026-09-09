@@ -25,7 +25,7 @@ export function LoadingSpinner({
       aria-label={label}
       className={cn('inline-flex items-center justify-center', className)}
     >
-      <Loader2 className={cn('animate-spin text-muted-foreground', sizeClass[size])} />
+      <Loader2 className={cn('animate-spin text-primary', sizeClass[size])} />
     </div>
   );
 }

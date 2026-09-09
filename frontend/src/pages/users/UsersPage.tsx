@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Avatar } from '@/components/common/Avatar';
@@ -11,9 +11,15 @@ import { SearchBox } from '@/components/forms/SearchBox';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
+import {
+  RowActionItem,
+  RowActionsMenu,
+} from '@/components/tables/RowActionsMenu';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermission } from '@/hooks/usePermission';
@@ -51,6 +57,7 @@ export function UsersPage() {
     isActive: '',
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(10);
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'createdAt',
     sortOrder: 'desc',
@@ -64,7 +71,7 @@ export function UsersPage() {
 
   const listParams: ListUsersParams = {
     page,
-    limit: 10,
+    limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     role: typeof appliedFilters.role === 'string' && appliedFilters.role
       ? appliedFilters.role
@@ -139,77 +146,63 @@ export function UsersPage() {
     {
       id: 'actions',
       header: '',
-      className: 'w-12 text-right',
+      className: 'text-right',
+      width: 72,
+      minWidth: 72,
+      maxWidth: 72,
       cell: (row) => {
         const isSelf = row.id === currentUser?.id;
         const open = menuUserId === row.id;
         return (
-          <div className="relative flex justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Row actions"
-              onClick={() => setMenuUserId(open ? null : row.id)}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-            {open ? (
-              <div className="absolute right-0 z-20 mt-8 w-44 rounded-lg border border-border bg-popover p-1 shadow-md">
-                <PermissionGate permission={PERMISSIONS.USERS_EDIT}>
-                  <button
-                    type="button"
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      setMenuUserId(null);
-                      setDrawerMode('edit');
-                      setEditingUser(row);
-                      setDrawerOpen(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-                </PermissionGate>
-                <PermissionGate permission={PERMISSIONS.USERS_EDIT}>
-                  <button
-                    type="button"
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
-                    disabled={isSelf}
-                    title={
-                      isSelf
-                        ? 'You cannot change your own status'
-                        : undefined
-                    }
-                    onClick={() => {
-                      setMenuUserId(null);
-                      setPendingStatus({
-                        user: row,
-                        nextActive: !row.isActive,
-                      });
-                    }}
-                  >
-                    {row.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                </PermissionGate>
-                <PermissionGate permission={PERMISSIONS.USERS_DELETE}>
-                  <button
-                    type="button"
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-destructive hover:bg-muted disabled:opacity-50"
-                    disabled={isSelf}
-                    title={
-                      isSelf ? 'You cannot delete your own account' : undefined
-                    }
-                    onClick={() => {
-                      setMenuUserId(null);
-                      setPendingDelete(row);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </PermissionGate>
-              </div>
-            ) : null}
-          </div>
+          <RowActionsMenu
+            open={open}
+            onOpenChange={(next) => setMenuUserId(next ? row.id : null)}
+          >
+            <PermissionGate permission={PERMISSIONS.USERS_EDIT}>
+              <RowActionItem
+                onClick={() => {
+                  setMenuUserId(null);
+                  setDrawerMode('edit');
+                  setEditingUser(row);
+                  setDrawerOpen(true);
+                }}
+              >
+                Edit
+              </RowActionItem>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.USERS_EDIT}>
+              <RowActionItem
+                disabled={isSelf}
+                title={
+                  isSelf ? 'You cannot change your own status' : undefined
+                }
+                onClick={() => {
+                  setMenuUserId(null);
+                  setPendingStatus({
+                    user: row,
+                    nextActive: !row.isActive,
+                  });
+                }}
+              >
+                {row.isActive ? 'Deactivate' : 'Activate'}
+              </RowActionItem>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.USERS_DELETE}>
+              <RowActionItem
+                destructive
+                disabled={isSelf}
+                title={
+                  isSelf ? 'You cannot delete your own account' : undefined
+                }
+                onClick={() => {
+                  setMenuUserId(null);
+                  setPendingDelete(row);
+                }}
+              >
+                Delete
+              </RowActionItem>
+            </PermissionGate>
+          </RowActionsMenu>
         );
       },
     },
@@ -307,6 +300,11 @@ export function UsersPage() {
             : undefined
         }
         onPageChange={setPage}
+        pageSizeSelection={pageSize}
+        onPageSizeChange={(size) => {
+          setPage(1);
+          setPageSize(size);
+        }}
         emptyTitle="No users found"
         emptyDescription="Try adjusting search or filters, or create a new user."
       />

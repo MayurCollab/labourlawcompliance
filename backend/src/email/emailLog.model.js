@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 
 /**
- * Audit trail for outbound email jobs (BullMQ).
- * One document per recipient/job attempt chain.
+ * Audit trail for outbound emails.
+ * One document per recipient send attempt chain.
  */
 const emailLogSchema = new mongoose.Schema(
   {
@@ -28,7 +28,6 @@ const emailLogSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Worker updates look a log up by its BullMQ job id
 emailLogSchema.index({ jobId: 1 }, { sparse: true });
 
 // Operational queries: "what failed recently", "what did we send this user"

@@ -33,8 +33,8 @@ router.get('/', getHealth);
  *       - Health
  *     summary: Liveness probe
  *     description: >
- *       Returns 200 whenever the process is running. Does not touch Mongo or
- *       Redis — a dependency outage must not trigger a container restart.
+ *       Returns 200 whenever the process is running. Does not touch Mongo —
+ *       a dependency outage must not trigger a container restart.
  *     responses:
  *       200:
  *         description: Process is alive
@@ -71,9 +71,8 @@ router.get('/live', getLiveness);
  *       - Health
  *     summary: Readiness probe
  *     description: >
- *       Pings MongoDB (and Redis when REDIS_URL is configured). Returns 503
- *       when a required dependency is unreachable so the instance is pulled
- *       out of the load-balancer rotation.
+ *       Pings MongoDB. Returns 503 when the database is unreachable so the
+ *       instance is pulled out of the load-balancer rotation.
  *     responses:
  *       200:
  *         description: All dependencies reachable

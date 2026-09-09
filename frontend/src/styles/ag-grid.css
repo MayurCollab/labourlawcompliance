@@ -1,0 +1,219 @@
+/*
+  Shared AG Grid look — follows app design tokens (full theme).
+*/
+
+.llc-ag-grid {
+  --ag-font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --ag-font-size: 0.875rem;
+  --ag-border-radius: var(--radius);
+  --ag-background-color: var(--card);
+  --ag-foreground-color: var(--foreground);
+  --ag-border-color: var(--border);
+  --ag-secondary-border-color: color-mix(in oklch, var(--border) 70%, transparent);
+  --ag-header-background-color: color-mix(in oklch, var(--primary) 8%, var(--muted));
+  --ag-header-foreground-color: color-mix(in oklch, var(--foreground) 75%, var(--primary));
+  --ag-header-column-resize-handle-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  --ag-odd-row-background-color: color-mix(in oklch, var(--muted) 55%, transparent);
+  --ag-row-hover-color: color-mix(in oklch, var(--accent) 75%, transparent);
+  --ag-selected-row-background-color: color-mix(in oklch, var(--primary) 14%, transparent);
+  --ag-range-selection-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
+  --ag-input-focus-border-color: var(--ring);
+  --ag-checkbox-checked-color: var(--primary);
+  --ag-checkbox-unchecked-color: var(--muted-foreground);
+  --ag-accent-color: var(--primary);
+  --ag-cell-horizontal-padding: 1rem;
+  --ag-header-height: 2.75rem;
+  --ag-row-height: 3rem;
+  --ag-wrapper-border-radius: calc(var(--radius) + 4px);
+  --ag-card-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent);
+
+  width: 100%;
+  min-width: 640px;
+  overflow: visible;
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.llc-ag-grid:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ring) 45%, transparent),
+    var(--ag-card-shadow);
+}
+
+.llc-ag-grid .ag-root-wrapper {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--card);
+  box-shadow: var(--ag-card-shadow);
+  overflow: visible;
+}
+
+.llc-ag-grid .ag-header {
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.llc-ag-grid .ag-header-cell,
+.llc-ag-grid .ag-cell {
+  display: flex;
+  align-items: center;
+}
+
+.llc-ag-grid .ag-header-cell-label {
+  gap: 0.35rem;
+}
+
+.llc-ag-grid .ag-header-cell:hover {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  color: var(--foreground);
+}
+
+.llc-ag-grid .ag-row {
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  transition: background-color 140ms ease;
+}
+
+.llc-ag-grid .ag-row-hover {
+  background-color: var(--ag-row-hover-color) !important;
+}
+
+.llc-ag-grid .ag-row-selected {
+  background-color: var(--ag-selected-row-background-color) !important;
+}
+
+.llc-ag-grid .ag-cell {
+  line-height: 1.35;
+  overflow: visible;
+}
+
+.llc-ag-grid .ag-cell-wrapper {
+  width: 100%;
+  overflow: visible;
+}
+
+.llc-ag-grid .llc-ag-actions-cell,
+.llc-ag-grid .llc-ag-actions-cell .ag-cell-wrapper,
+.llc-ag-grid .llc-ag-actions-cell .ag-cell-value {
+  overflow: visible !important;
+  justify-content: flex-end;
+}
+
+.llc-ag-grid .ag-center-cols-clipper,
+.llc-ag-grid .ag-center-cols-viewport,
+.llc-ag-grid .ag-body-viewport,
+.llc-ag-grid .ag-body,
+.llc-ag-grid .ag-center-cols-container,
+.llc-ag-grid .ag-row {
+  overflow: visible !important;
+}
+
+.llc-ag-grid .ag-sort-indicator-icon {
+  color: var(--primary);
+  opacity: 0.95;
+}
+
+.llc-ag-grid .ag-overlay-no-rows-wrapper,
+.llc-ag-grid .ag-overlay-loading-wrapper {
+  padding: 0;
+  background: transparent;
+}
+
+.llc-ag-grid .ag-pinned-left-header,
+.llc-ag-grid .ag-pinned-left-cols-container {
+  background: var(--card);
+}
+
+.llc-ag-grid .llc-ag-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.llc-ag-grid .llc-ag-sort-button:hover {
+  color: var(--foreground);
+}
+
+.llc-ag-grid .llc-ag-sort-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  opacity: 0.5;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.llc-ag-grid .llc-ag-sort-icon.is-active {
+  opacity: 1;
+  color: var(--primary);
+}
+
+.llc-ag-grid-shell {
+  overflow-x: auto;
+  overflow-y: visible;
+  border-radius: calc(var(--radius) + 4px);
+  padding: 1px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 10%, transparent),
+      transparent 42%
+    ),
+    var(--card);
+  border: 1px solid color-mix(in oklch, var(--primary) 12%, var(--border));
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+/* Dedicated loading skeleton (replaces faint AG overlay) */
+.llc-ag-loading {
+  min-height: 280px;
+  border-radius: calc(var(--radius) + 2px);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.llc-ag-loading__header {
+  display: grid;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--primary) 8%, var(--muted));
+}
+
+.llc-ag-loading__row {
+  display: grid;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+}
+
+.llc-ag-loading__row:nth-child(even) {
+  background: color-mix(in oklch, var(--muted) 45%, transparent);
+}
+
+.llc-ag-loading__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.25rem 1rem 1.5rem;
+  background: color-mix(in oklch, var(--card) 88%, var(--primary));
+  border-top: 1px solid var(--border);
+}
+
+.llc-ag-loading__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}

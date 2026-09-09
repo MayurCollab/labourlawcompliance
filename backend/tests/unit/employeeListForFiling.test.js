@@ -99,6 +99,52 @@ describe('employeeListForFiling', () => {
     expect(listed[2]).toMatchObject({ srNo: 3, employeeNo: 'E3' });
   });
 
+  test('employeesForClientLocation uses slab rate for P.Tax not sheet value', () => {
+    const listed = employeesForClientLocation({
+      employees: [
+        {
+          employeeNo: 'E1',
+          employeeName: 'A',
+          period: '2026-07',
+          client: 'client-1',
+          phyCode: '0083',
+          locationName: 'Anand',
+          ptGross: 15000,
+          pTax: 999,
+          unmatched: false,
+        },
+      ],
+      client,
+      period: '2026-07',
+      slabs,
+    });
+    expect(listed[0].pTax).toBe(200);
+    expect(listed[0].ptGross).toBe(15000);
+  });
+
+  test('employeesForClientLocation uses fixed ₹200 when PT GROSS is blank', () => {
+    const listed = employeesForClientLocation({
+      employees: [
+        {
+          employeeNo: 'E1',
+          employeeName: 'A',
+          period: '2026-07',
+          client: 'client-1',
+          phyCode: '0083',
+          locationName: 'Anand',
+          ptGross: null,
+          pTax: 1,
+          unmatched: false,
+        },
+      ],
+      client,
+      period: '2026-07',
+      slabs,
+    });
+    expect(listed[0].pTax).toBe(200);
+    expect(listed[0].ptGross).toBeNull();
+  });
+
   test('employeeCountsForList splits taxable and exempt', () => {
     const listed = employeesForClientLocation({
       employees,

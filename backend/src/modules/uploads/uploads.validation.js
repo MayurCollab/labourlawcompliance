@@ -47,7 +47,7 @@ export const listUploadRowsSchema = z.object({
     .record(z.string(), z.number().int().min(0).nullable())
     .optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: z.coerce.number().int().min(1).max(10000).default(50),
   companyName: z.string().trim().max(200).optional().nullable(),
 });
 

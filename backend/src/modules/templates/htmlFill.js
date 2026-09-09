@@ -148,11 +148,9 @@ export const flattenValuesForHandlebars = (values = {}) => {
 };
 
 let helpersRegistered = false;
-let partialsRegistered = false;
 
+/** Always re-read disk so stamp/partial edits apply without a process restart. */
 const registerPartials = async () => {
-  if (partialsRegistered) return;
-  partialsRegistered = true;
   const partials = await readBundledPartials();
   for (const [name, source] of Object.entries(partials)) {
     Handlebars.registerPartial(name, source);
@@ -216,7 +214,5 @@ export const fillHtmlBuffer = async (buffer, values) => {
   return Buffer.from(html, 'utf8');
 };
 
-/** Reset partial registration (tests only). */
-export const resetHtmlFillPartialsForTests = () => {
-  partialsRegistered = false;
-};
+/** No-op kept for older tests that still import this helper. */
+export const resetHtmlFillPartialsForTests = () => {};

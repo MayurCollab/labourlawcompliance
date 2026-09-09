@@ -20,7 +20,7 @@ export const listFilingsQuerySchema = paginationQuerySchema
     generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
     sortBy: z.enum(FILING_SORTABLE_FIELDS).default('period'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
-    limit: z.coerce.number().int().min(1).max(200).default(50),
+    limit: z.coerce.number().int().min(1).max(10000).default(50),
   });
 
 export const downloadFilingQuerySchema = z.object({

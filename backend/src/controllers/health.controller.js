@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 
 import config from '../config/index.js';
-import { getRedis, isRedisEnabled } from '../config/redis.js';
 import asyncHandler from '../middleware/asyncHandler.js';
 import { sendSuccess } from '../utils/responseFormatter.js';
 
@@ -47,21 +46,6 @@ const checkMongo = async () => {
   }
 };
 
-const checkRedis = async () => {
-  if (!isRedisEnabled()) {
-    // Unset or unreachable Redis is a valid single-instance deploy, not a failure
-    return { status: 'not_configured' };
-  }
-
-  const startedAt = Date.now();
-  try {
-    await withTimeout(getRedis().ping(), PING_TIMEOUT_MS, 'redis');
-    return { status: 'up', latencyMs: Date.now() - startedAt };
-  } catch (err) {
-    return { status: 'down', error: err.message };
-  }
-};
-
 /**
  * GET /api/v1/health/live
  * Liveness: is this process running and able to answer? Never touches a
@@ -83,21 +67,21 @@ export const getLiveness = asyncHandler(async (_req, res) =>
 
 /**
  * GET /api/v1/health/ready
- * Readiness: can this process actually serve traffic? Pings Mongo (and Redis
- * when configured). Returns 503 when any required dependency is down so a
- * load balancer takes the instance out of rotation without restarting it.
+ * Readiness: can this process actually serve traffic? Pings MongoDB.
+ * Returns 503 when the database is down so a load balancer takes the
+ * instance out of rotation without restarting it.
  */
 export const getReadiness = asyncHandler(async (_req, res) => {
-  const [database, redis] = await Promise.all([checkMongo(), checkRedis()]);
+  const database = await checkMongo();
 
-  const ready = database.status === 'up' && redis.status !== 'down';
+  const ready = database.status === 'up';
   const body = {
     success: ready,
     message: ready ? 'READY' : 'NOT_READY',
     data: {
       status: ready ? 'ready' : 'not_ready',
       timestamp: new Date().toISOString(),
-      checks: { database, redis },
+      checks: { database },
     },
   };
 

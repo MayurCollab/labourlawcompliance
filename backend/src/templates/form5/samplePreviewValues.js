@@ -57,6 +57,16 @@ export const sampleForm5PreviewValues = () => ({
 
     includeEmployees: true,
 
+    showPhyCode: true,
+
+    showEmpNo: true,
+
+    showPtGross: true,
+
+    employeeListColCount: 7,
+
+    employeeListLabelColspan: 5,
+
     employeesTotalPtGross: 33000,
 
     employeesTotalPTax: 400,

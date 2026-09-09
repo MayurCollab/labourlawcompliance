@@ -14,10 +14,17 @@
       <tr>
         <th>#</th>
         <th>Location</th>
+        {{#if showEmpNo}}
+        <th>EMP.NO</th>
+        {{/if}}
         <th>Employee name</th>
+        {{#if showPhyCode}}
         <th>PHY CODE</th>
+        {{/if}}
         <th>P.Tax</th>
+        {{#if showPtGross}}
         <th>PT Gross</th>
+        {{/if}}
       </tr>
     </thead>
     <tbody>
@@ -25,24 +32,34 @@
       <tr>
         <td class="center">{{srNo}}</td>
         <td>{{locationName}}</td>
+        {{#if ../showEmpNo}}
+        <td class="center">{{employeeNo}}</td>
+        {{/if}}
         <td>{{employeeName}}</td>
+        {{#if ../showPhyCode}}
         <td class="center">{{phyCode}}</td>
+        {{/if}}
         <td class="right">{{currency pTax}}</td>
+        {{#if ../showPtGross}}
         <td class="right">{{currency ptGross}}</td>
+        {{/if}}
       </tr>
       {{/each}}
       {{#if employees.length}}
       <tr class="grand-total-row">
-        <td colspan="4" class="right"><strong>Grand Total</strong></td>
+        <td colspan="{{employeeListLabelColspan}}" class="right"><strong>Grand Total</strong></td>
         <td class="right"><strong>{{currency employeesTotalPTax}}</strong></td>
+        {{#if showPtGross}}
         <td class="right"><strong>{{currency employeesTotalPtGross}}</strong></td>
+        {{/if}}
       </tr>
       {{/if}}
       {{#unless employees.length}}
       <tr>
-        <td colspan="6" class="center empty-row">No employees for this client and month.</td>
+        <td colspan="{{employeeListColCount}}" class="center empty-row">No employees for this client and month.</td>
       </tr>
       {{/unless}}
     </tbody>
   </table>
+  {{> employee-list-stamp}}
 </div>

@@ -23,6 +23,7 @@ export type FilterPanelProps = {
   fields: FilterFieldConfig[];
   values: FilterValues;
   onChange: (values: FilterValues) => void;
+  /** Called on every field change (no separate Apply click). */
   onApply?: (values: FilterValues) => void;
   onReset?: () => void;
   title?: ReactNode;
@@ -31,7 +32,7 @@ export type FilterPanelProps = {
 
 /**
  * Generic filter panel driven by a field config array.
- * Emits a plain filter-state object — no feature-specific logic.
+ * Changes apply immediately when `onApply` is provided.
  */
 export function FilterPanel({
   fields,
@@ -43,35 +44,25 @@ export function FilterPanel({
   className,
 }: FilterPanelProps) {
   const setValue = (key: string, value: string | boolean | undefined) => {
-    onChange({ ...values, [key]: value });
+    const next = { ...values, [key]: value };
+    onChange(next);
+    onApply?.(next);
   };
 
   return (
     <div
       className={cn(
-        'space-y-4 rounded-xl border border-border bg-card p-4',
+        'space-y-4 rounded-xl border border-border/80 bg-card/90 p-4 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm',
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <div className="flex items-center gap-2">
-          {onReset ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onReset}>
-              Reset
-            </Button>
-          ) : null}
-          {onApply ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => onApply(values)}
-            >
-              Apply
-            </Button>
-          ) : null}
-        </div>
+        {onReset ? (
+          <Button type="button" variant="ghost" size="sm" onClick={onReset}>
+            Reset
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

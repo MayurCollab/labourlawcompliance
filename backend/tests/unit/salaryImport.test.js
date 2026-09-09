@@ -15,7 +15,7 @@ import * as uploadsRepository from '../../src/modules/uploads/uploads.repository
 import * as uploadsService from '../../src/modules/uploads/uploads.service.js';
 import storage from '../../src/storage/index.js';
 import { connectTestDb, clearTestDb, disconnectTestDb } from '../helpers/db.js';
-import { createVerifiedUser, seedRbac } from '../helpers/fixtures.js';
+import { createVerifiedUser, seedGujaratSlabs, seedRbac } from '../helpers/fixtures.js';
 import { buildSalaryWorkbookBuffer } from '../helpers/salarySheet.js';
 
 const salaryRow = (
@@ -48,6 +48,7 @@ describe('Salary ingest upsert', () => {
   beforeEach(async () => {
     await clearTestDb();
     const rbac = await seedRbac();
+    await seedGujaratSlabs();
     actor = await createVerifiedUser({
       email: 'admin@example.com',
       password: 'Password1',
@@ -263,6 +264,41 @@ describe('Salary ingest upsert', () => {
     expect(employees[1].employeeNo).toBe('E7002');
     expect(employees[1].phyCode).toBe('');
     expect(employees[1].ptGross).toBe(15000);
+
+    const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
+    await storage.deleteFile(stored.storedPath);
+  });
+
+  test('stores P.Tax from PT slab using PT GROSS, not Excel P.Tax', async () => {
+    const { created, result } = await uploadAndImport([
+      salaryRow('E8001', 'Slab Tax', '0083', { ptGross: 15000, pTax: 1 }),
+      salaryRow('E8002', 'Exempt', '0083', { ptGross: 2500, pTax: 999 }),
+    ]);
+
+    expect(result.report.inserted).toBe(2);
+    const employees = await Employee.find().sort({ employeeNo: 1 });
+    expect(employees[0].ptGross).toBe(15000);
+    expect(employees[0].pTax).toBe(200);
+    expect(employees[1].ptGross).toBe(2500);
+    expect(employees[1].pTax).toBe(0);
+
+    const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
+    await storage.deleteFile(stored.storedPath);
+  });
+
+  test('blank PT GROSS is allowed and stores fixed P.Tax 200', async () => {
+    const { created, result } = await uploadAndImport([
+      salaryRow('E9001', 'No Gross', '0083', { ptGross: null, pTax: 1 }),
+      salaryRow('E9002', 'Empty Gross', '0083', { ptGross: '', pTax: 50 }),
+    ]);
+
+    expect(result.report.skipped).toHaveLength(0);
+    expect(result.report.inserted).toBe(2);
+    const employees = await Employee.find().sort({ employeeNo: 1 });
+    expect(employees[0].ptGross).toBeNull();
+    expect(employees[0].pTax).toBe(200);
+    expect(employees[1].ptGross).toBeNull();
+    expect(employees[1].pTax).toBe(200);
 
     const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
     await storage.deleteFile(stored.storedPath);

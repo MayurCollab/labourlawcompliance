@@ -259,10 +259,6 @@ export const deleteClient = async (id, actorId) => {
   });
 };
 
-const sameId = (left, right) => String(left ?? '') === String(right ?? '');
-
-const sameText = (left, right) => (left ?? null) === (right ?? null);
-
 const isDuplicateKey = (err) => err?.code === 11000;
 
 const resolveLocationForImport = async (locationName, actorId, cache) => {
@@ -288,6 +284,42 @@ const resolveLocationForImport = async (locationName, actorId, cache) => {
  * sparse re-upload cannot wipe masters. Optional `cache` skips per-row finds.
  */
 export const upsertFromMasterRow = async (fields, actorId, cache = null) => {
+  const prepared = await prepareMasterClientUpsert(fields, actorId, cache);
+  if (prepared.outcome === 'skipped') {
+    return { outcome: 'skipped', reason: prepared.reason };
+  }
+
+  if (prepared.existing) {
+    const { existing, setDoc } = prepared;
+    Object.assign(existing, setDoc);
+    existing.updatedBy = actorId;
+    await clientsRepository.saveClient(existing);
+    rememberClient(cache, existing);
+    return { outcome: 'updated', client: existing };
+  }
+
+  try {
+    const client = await clientsRepository.createClient({
+      ...prepared.setDoc,
+      ...prepared.setOnInsert,
+      createdBy: actorId,
+    });
+    rememberClient(cache, client);
+    return { outcome: 'inserted', client };
+  } catch (err) {
+    if (!isDuplicateKey(err)) throw err;
+    const raced = await clientsRepository.findClientByCode(prepared.clientCode);
+    if (!raced) throw err;
+    rememberClient(cache, raced);
+    return upsertFromMasterRow(fields, actorId, cache);
+  }
+};
+
+/**
+ * Validate + resolve location for a MasterSheet / Client-Master row.
+ * Match is by clientCode only; returns a bulk-ready $set document.
+ */
+export const prepareMasterClientUpsert = async (fields, actorId, cache = null) => {
   const clientCode = normalizeClientCode(fields.clientCode);
   if (!clientCode) {
     return { outcome: 'skipped', reason: 'Missing client code' };
@@ -316,37 +348,38 @@ export const upsertFromMasterRow = async (fields, actorId, cache = null) => {
       cache,
     );
 
-    try {
-      const client = await clientsRepository.createClient({
-        clientCode,
-        companyName,
-        draftName: blankToNull(fields.draftName) ?? null,
-        location: location.id,
-        rcNumber: blankToNull(fields.rcNumber) ?? null,
-        contactNumber: blankToNull(fields.contactNumber) ?? null,
-        fundCode: blankToNull(fields.fundCode) ?? null,
-        phyCode:
-          blankToNull(fields.phyCode) || extractPhyCode(companyName) || null,
-        status: blankToNull(fields.status) ?? null,
-        address: blankToNull(fields.address) ?? null,
-        includeEmployeesOnForm5: true,
+    const setDoc = {
+      clientCode,
+      companyName,
+      draftName: blankToNull(fields.draftName) ?? null,
+      location: location.id || location._id,
+      rcNumber: blankToNull(fields.rcNumber) ?? null,
+      contactNumber: blankToNull(fields.contactNumber) ?? null,
+      fundCode: blankToNull(fields.fundCode) ?? null,
+      phyCode:
+        blankToNull(fields.phyCode) || extractPhyCode(companyName) || null,
+      status: blankToNull(fields.status) ?? null,
+      address: blankToNull(fields.address) ?? null,
+      includeEmployeesOnForm5: true,
+      updatedAt: new Date(),
+    };
+
+    return {
+      outcome: 'ready',
+      clientCode,
+      existing: null,
+      setDoc,
+      setOnInsert: {
         createdBy: actorId,
-      });
-
-      rememberClient(cache, client);
-      return { outcome: 'inserted', client };
-    } catch (err) {
-      if (!isDuplicateKey(err)) throw err;
-      const raced = await clientsRepository.findClientByCode(clientCode);
-      if (!raced) throw err;
-      rememberClient(cache, raced);
-      return upsertFromMasterRow(fields, actorId, cache);
-    }
+        createdAt: new Date(),
+        isDeleted: false,
+        deletedAt: null,
+      },
+    };
   }
 
-  if (companyName && companyName !== existing.companyName) {
-    existing.companyName = companyName;
-  }
+  const setDoc = {};
+  if (companyName) setDoc.companyName = companyName;
 
   if (locationName) {
     const location = await resolveLocationForImport(
@@ -354,9 +387,7 @@ export const upsertFromMasterRow = async (fields, actorId, cache = null) => {
       actorId,
       cache,
     );
-    if (!sameId(existing.location, location.id)) {
-      existing.location = location.id;
-    }
+    setDoc.location = location.id || location._id;
   }
 
   const optionalFields = [
@@ -371,29 +402,112 @@ export const upsertFromMasterRow = async (fields, actorId, cache = null) => {
     if (fields[field] === undefined) continue;
     const next = blankToNull(fields[field]);
     if (next === null) continue;
-    if (!sameText(existing[field], next)) {
-      existing[field] = next;
-    }
+    setDoc[field] = next;
   }
 
   const nextPhy =
-    blankToNull(fields.phyCode) || extractPhyCode(existing.companyName);
-  if (nextPhy && !sameText(existing.phyCode, nextPhy)) {
-    existing.phyCode = nextPhy;
+    blankToNull(fields.phyCode) ||
+    extractPhyCode(setDoc.companyName || existing.companyName);
+  if (nextPhy) setDoc.phyCode = nextPhy;
+
+  setDoc.updatedBy = actorId;
+  setDoc.updatedAt = new Date();
+
+  return {
+    outcome: 'ready',
+    clientCode,
+    existing,
+    setDoc,
+    setOnInsert: null,
+  };
+};
+
+/**
+ * Unique clientCode match → full-row replace via bulkWrite (chunked).
+ * Later duplicate codes in the same sheet win.
+ */
+export const bulkUpsertMasterClients = async ({
+  preparedRows,
+  actorId,
+  cache,
+  chunkSize = 500,
+  onChunk,
+}) => {
+  const report = { inserted: 0, updated: 0, unchanged: 0, skipped: [] };
+
+  /** @type {Map<string, object>} */
+  const byCode = new Map();
+  for (const row of preparedRows) {
+    if (row.outcome === 'skipped') {
+      report.skipped.push({ row: row.excelRow, reason: row.reason });
+      continue;
+    }
+    byCode.set(row.clientCode, row);
   }
 
-  const changedFields = existing
-    .modifiedPaths()
-    .filter((field) => field !== 'updatedBy');
-  if (changedFields.length === 0) {
-    rememberClient(cache, existing);
-    return { outcome: 'unchanged', client: existing };
+  const writeRows = [...byCode.values()];
+  const ops = [];
+  const meta = [];
+
+  for (const row of writeRows) {
+    if (row.existing?._id) {
+      ops.push({
+        updateOne: {
+          filter: { _id: row.existing._id },
+          update: { $set: row.setDoc },
+        },
+      });
+      meta.push({ kind: 'update', row });
+    } else {
+      ops.push({
+        updateOne: {
+          filter: { clientCode: row.clientCode, isDeleted: false },
+          update: {
+            $set: { ...row.setDoc, updatedBy: actorId, updatedAt: new Date() },
+            $setOnInsert: row.setOnInsert,
+          },
+          upsert: true,
+        },
+      });
+      meta.push({ kind: 'insert', row });
+    }
   }
 
-  existing.updatedBy = actorId;
-  await clientsRepository.saveClient(existing);
-  rememberClient(cache, existing);
-  return { outcome: 'updated', client: existing };
+  let written = 0;
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    const opChunk = ops.slice(i, i + chunkSize);
+    const metaChunk = meta.slice(i, i + chunkSize);
+    if (opChunk.length) {
+      await clientsRepository.bulkWriteClients(opChunk);
+    }
+
+    for (const item of metaChunk) {
+      if (item.kind === 'insert') report.inserted += 1;
+      else report.updated += 1;
+    }
+
+    // Refresh cache with persisted clients for filing upserts.
+    const codes = metaChunk.map((item) => item.row.clientCode);
+    const fresh = await clientsRepository.findClientsByCodes(codes);
+    for (const client of fresh) {
+      rememberClient(cache, client);
+    }
+
+    written += metaChunk.length;
+    if (onChunk) {
+      onChunk({ written, writeTotal: ops.length, report });
+    }
+  }
+
+  if (!ops.length && onChunk) {
+    onChunk({ written: 0, writeTotal: 0, report });
+  }
+
+  return {
+    report,
+    clientsByCode: cache?.clientsByCode ?? new Map(),
+    writeRows,
+  };
 };
 
 /**

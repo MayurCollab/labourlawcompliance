@@ -3,6 +3,8 @@
  * map via mapping JSON — no district layout lives here.
  */
 
+import { legalCompanyName, normalizePhyCode } from '../uploads/masterParse.js';
+
 const ACT_NAME =
   'Gujarat State Tax on Professions, Trades, Callings and Employments Act';
 
@@ -128,23 +130,43 @@ export const buildComputationFromMaster = (filing, slabs = []) => {
 };
 
 export const form5Filename = ({
+  companyName,
   clientCode,
   locationName,
   period,
+  periodLabel,
   ext = '.pdf',
 }) => {
-  const code = String(clientCode || 'CLIENT')
-    .replace(/[^\w]+/g, '')
-    .slice(0, 32) || 'CLIENT';
+  const legal = legalCompanyName(companyName);
+  const firstWord =
+    String(legal)
+      .split(/[\s,._/\\-]+/)
+      .find((part) => part.replace(/[^\w]/g, '')) || '';
+  const company =
+    firstWord.replace(/[^\w]+/g, '').slice(0, 32) ||
+    String(clientCode || '')
+      .replace(/[^\w]+/g, '')
+      .slice(0, 32) ||
+    'Client';
+
   const loc =
     String(locationName || 'NA')
       .replace(/[^\w]+/g, '_')
       .replace(/^_+|_+$/g, '')
       .slice(0, 40) || 'NA';
+
+  const monthRaw =
+    periodLabel || periodBounds(period).label || period || 'NA';
+  const month =
+    String(monthRaw)
+      .replace(/[^\w-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 24) || 'NA';
+
   const safeExt = String(ext || '.xlsx').startsWith('.')
     ? String(ext)
     : `.${ext}`;
-  return `${code}_${loc}_${period}_Form5${safeExt}`;
+  return `${loc}_${company}_${month}${safeExt}`;
 };
 
 export const buildForm5Values = ({
@@ -189,6 +211,16 @@ export const buildForm5Values = ({
   const totalPayable = totalA + additionalTaxPayable + interestAmount;
 
   const listedEmployees = Array.isArray(employees) ? employees : [];
+  // Multi-branch clients carry PHY_CODE; hide the column when the client has none.
+  const showPhyCode = Boolean(normalizePhyCode(client?.phyCode));
+  const showEmpNo = listedEmployees.some(
+    (row) => String(row?.employeeNo ?? '').trim() !== '',
+  );
+  const showPtGross = listedEmployees.some(
+    (row) => row?.ptGross !== null && row?.ptGross !== undefined && row?.ptGross !== '',
+  );
+  const employeeListExtraCols =
+    (showEmpNo ? 1 : 0) + (showPhyCode ? 1 : 0) + (showPtGross ? 1 : 0);
   const employeesTotalPtGross = listedEmployees.reduce(
     (sum, row) => sum + (Number(row.ptGross) || 0),
     0,
@@ -231,6 +263,12 @@ export const buildForm5Values = ({
       taxableEmployeeCount,
       exemptEmployeeCount,
       includeEmployees: includeEmployees !== false,
+      showPhyCode,
+      showEmpNo,
+      showPtGross,
+      // Base columns: #, Location, Name, P.Tax (+ optional EMP.NO / PHY / PT Gross).
+      employeeListColCount: 4 + employeeListExtraCols,
+      employeeListLabelColspan: 3 + (showEmpNo ? 1 : 0) + (showPhyCode ? 1 : 0),
       employeesTotalPtGross,
       employeesTotalPTax,
       totalA,

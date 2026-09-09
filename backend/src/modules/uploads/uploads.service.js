@@ -45,6 +45,7 @@ import {
 } from './importCache.js';
 import {
   EXCEL_EXTENSIONS,
+  IMPORT_BULK_CHUNK_SIZE,
   UPLOAD_KINDS,
   UPLOAD_STATUSES,
   UPLOADS_CODES,
@@ -410,58 +411,38 @@ const importMaster = async (
   await loadFilingsIntoCache(cache, [...periods]);
 
   const total = dataRows.length;
-  let processed = 0;
-  const emit = makeProgressEmitter(onProgress);
+  const emit = makeProgressEmitter(onProgress, 25);
+  const chunkSize = IMPORT_BULK_CHUNK_SIZE;
 
+  emit(
+    {
+      phase: 'import',
+      processed: 0,
+      total,
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      unmatched: 0,
+      filings: report.filings,
+    },
+    true,
+  );
+
+  const preparedClients = [];
+  let preparedCount = 0;
   for (const { row, excelRow } of dataRows) {
     const fields = buildRowFields(row, mapping, MASTER_FIELDS);
-    const clientResult = await clientsService.upsertFromMasterRow(
-      {
-        clientCode: fields.clientCode,
-        companyName: fields.companyName,
-        locationName: fields.locationName,
-        draftName: fields.draftName,
-        rcNumber: fields.rcNumber,
-        contactNumber: fields.contactNumber,
-        fundCode: fields.fundCode,
-        status: fields.status,
-      },
+    const prepared = await clientsService.prepareMasterClientUpsert(
+      fields,
       actorId,
       cache,
     );
-
-    if (clientResult.outcome === 'skipped') {
-      report.skipped.push({ row: excelRow, reason: clientResult.reason });
-    } else {
-      if (clientResult.outcome === 'inserted') report.inserted += 1;
-      if (clientResult.outcome === 'updated') report.updated += 1;
-      if (clientResult.outcome === 'unchanged') report.unchanged += 1;
-
-      const periodLabel =
-        stringifyCell(fields.month) || selectedSheet || '';
-      const period = parsePeriod(fields.month, selectedSheet);
-      const filingResult = await filingsService.upsertFromMasterRow({
-        client: clientResult.client,
-        fields,
-        period,
-        periodLabel,
-        actorId,
-        cache,
-      });
-
-      if (filingResult.outcome === 'skipped') {
-        report.skipped.push({ row: excelRow, reason: filingResult.reason });
-      } else {
-        if (filingResult.outcome === 'inserted') report.filings.inserted += 1;
-        if (filingResult.outcome === 'updated') report.filings.updated += 1;
-        if (filingResult.outcome === 'unchanged') report.filings.unchanged += 1;
-      }
-    }
-
-    processed += 1;
+    preparedClients.push({ ...prepared, fields, excelRow });
+    preparedCount += 1;
     emit({
       phase: 'import',
-      processed,
+      processed: preparedCount,
       total,
       inserted: report.inserted,
       updated: report.updated,
@@ -471,6 +452,88 @@ const importMaster = async (
       filings: report.filings,
     });
   }
+
+  const clientBulk = await clientsService.bulkUpsertMasterClients({
+    preparedRows: preparedClients,
+    actorId,
+    cache,
+    chunkSize,
+    onChunk: ({ written, writeTotal, report: clientReport }) => {
+      report.inserted = clientReport.inserted;
+      report.updated = clientReport.updated;
+      report.skipped = [...clientReport.skipped];
+      emit({
+        phase: 'import',
+        processed: total,
+        total,
+        inserted: report.inserted,
+        updated: report.updated,
+        unchanged: report.unchanged,
+        skipped: report.skipped.length,
+        unmatched: report.unmatched.length,
+        filings: report.filings,
+      });
+    },
+  });
+
+  report.inserted = clientBulk.report.inserted;
+  report.updated = clientBulk.report.updated;
+  report.skipped = [...clientBulk.report.skipped];
+
+  const filingRows = [];
+  for (const prepared of preparedClients) {
+    if (prepared.outcome === 'skipped') continue;
+    const client = cache.clientsByCode.get(prepared.clientCode);
+    if (!client) {
+      report.skipped.push({
+        row: prepared.excelRow,
+        reason: 'Client could not be loaded after save',
+      });
+      continue;
+    }
+    const periodLabel =
+      stringifyCell(prepared.fields.month) || selectedSheet || '';
+    const period = parsePeriod(prepared.fields.month, selectedSheet);
+    filingRows.push({
+      client,
+      fields: prepared.fields,
+      period,
+      periodLabel,
+      excelRow: prepared.excelRow,
+    });
+  }
+
+  const filingReport = await filingsService.bulkUpsertFilingsFromMaster({
+    rows: filingRows,
+    actorId,
+    cache,
+    chunkSize,
+    onChunk: ({ written, writeTotal, report: nextFilings }) => {
+      report.filings = {
+        inserted: nextFilings.inserted,
+        updated: nextFilings.updated,
+        unchanged: nextFilings.unchanged,
+      };
+      emit({
+        phase: 'import',
+        processed: total,
+        total,
+        inserted: report.inserted,
+        updated: report.updated,
+        unchanged: report.unchanged,
+        skipped: report.skipped.length,
+        unmatched: report.unmatched.length,
+        filings: report.filings,
+      });
+    },
+  });
+
+  report.filings = {
+    inserted: filingReport.inserted,
+    updated: filingReport.updated,
+    unchanged: filingReport.unchanged,
+  };
+  report.skipped.push(...filingReport.skipped);
 
   emit(
     {
@@ -534,64 +597,56 @@ const importSalary = async (
 
   const cache = await createSalaryMatchCache(resolvedPeriod);
   const rows = parsed.rowsBySheet[selectedSheet] || [];
-  const report = {
-    inserted: 0,
-    updated: 0,
-    unchanged: 0,
-    skipped: [],
-    unmatched: [],
-  };
 
   const dataRows = [];
   iterateDataRows(rows, parsed.dataStartIndex, (row, excelRow) => {
-    dataRows.push({ row, excelRow });
+    dataRows.push({
+      fields: buildRowFields(row, mapping, SALARY_FIELDS),
+      excelRow,
+    });
   });
 
   const total = dataRows.length;
-  let processed = 0;
-  const emit = makeProgressEmitter(onProgress);
+  const emit = makeProgressEmitter(onProgress, 1);
 
-  for (const { row, excelRow } of dataRows) {
-    const fields = buildRowFields(row, mapping, SALARY_FIELDS);
-    const result = await employeesService.upsertFromSalaryRow({
-      fields,
-      period: resolvedPeriod,
-      periodLabel: resolvedPeriod,
-      clients: cache.clients,
-      companyName: companyName || upload.companyName || '',
-      uploadId: upload.id,
-      actorId,
-      cache,
-    });
-
-    if (result.outcome === 'skipped') {
-      report.skipped.push({ row: excelRow, reason: result.reason });
-    } else if (result.outcome === 'unmatched') {
-      report.unmatched.push({
-        row: excelRow,
-        employeeNo: stringifyCell(fields.employeeNo),
-        phyCode: stringifyCell(fields.phyCode),
-        clientCode: stringifyCell(fields.clientCode),
-        reason: result.reason,
+  const report = await employeesService.bulkUpsertSalaryRows({
+    rows: dataRows,
+    period: resolvedPeriod,
+    periodLabel: resolvedPeriod,
+    clients: cache.clients,
+    companyName: companyName || upload.companyName || '',
+    uploadId: upload.id,
+    actorId,
+    cache,
+    chunkSize: IMPORT_BULK_CHUNK_SIZE,
+    onChunk: ({ written, writeTotal, skipped, report: nextReport }) => {
+      const processed = Math.min(total, written + skipped);
+      emit({
+        phase: 'import',
+        processed: writeTotal === 0 ? total : processed,
+        total,
+        inserted: nextReport.inserted,
+        updated: nextReport.updated,
+        unchanged: nextReport.unchanged,
+        skipped: nextReport.skipped.length,
+        unmatched: nextReport.unmatched.length,
       });
-    } else {
-      if (result.outcome === 'inserted') report.inserted += 1;
-      if (result.outcome === 'updated') report.updated += 1;
-      if (result.outcome === 'unchanged') report.unchanged += 1;
-    }
+    },
+  });
 
-    processed += 1;
-    emit({
+  emit(
+    {
       phase: 'import',
-      processed,
+      processed: total,
       total,
       inserted: report.inserted,
       updated: report.updated,
       unchanged: report.unchanged,
       skipped: report.skipped.length,
       unmatched: report.unmatched.length,
-    });
-  }
+    },
+    true,
+  );
 
   upload.period = resolvedPeriod;
   upload.companyName = companyName || upload.companyName || null;
@@ -641,29 +696,69 @@ const importClientMaster = async (
   });
 
   const total = dataRows.length;
-  let processed = 0;
-  const emit = makeProgressEmitter(onProgress);
+  const emit = makeProgressEmitter(onProgress, 25);
 
+  emit(
+    {
+      phase: 'import',
+      processed: 0,
+      total,
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      unmatched: 0,
+    },
+    true,
+  );
+
+  const preparedClients = [];
+  let preparedCount = 0;
   for (const { row, excelRow } of dataRows) {
     const fields = buildRowFields(row, mapping, CLIENT_MASTER_FIELDS);
-    const result = await clientsService.upsertFromClientMasterRow(
-      fields,
+    // Same unique-key + replace path as MasterSheet clients (clientno / C0001).
+    const prepared = await clientsService.prepareMasterClientUpsert(
+      {
+        clientCode: fields.clientCode,
+        companyName: fields.companyName,
+        locationName: fields.locationName,
+        rcNumber: fields.rcNumber,
+        address: fields.address,
+        status: fields.status,
+        phyCode: fields.phyCode,
+      },
       actorId,
       cache,
     );
 
-    if (result.outcome === 'skipped') {
-      report.skipped.push({ row: excelRow, reason: result.reason });
+    if (
+      prepared.outcome === 'skipped' &&
+      prepared.reason?.includes('Missing company name')
+    ) {
+      preparedClients.push({
+        outcome: 'skipped',
+        reason:
+          'Client is not in the MasterSheet and this row has no company name',
+        excelRow,
+      });
+    } else if (
+      prepared.outcome === 'skipped' &&
+      prepared.reason === 'Missing location'
+    ) {
+      preparedClients.push({
+        outcome: 'skipped',
+        reason:
+          'Client is not in the MasterSheet and this row has no location',
+        excelRow,
+      });
     } else {
-      if (result.outcome === 'inserted') report.inserted += 1;
-      if (result.outcome === 'updated') report.updated += 1;
-      if (result.outcome === 'unchanged') report.unchanged += 1;
+      preparedClients.push({ ...prepared, excelRow });
     }
 
-    processed += 1;
+    preparedCount += 1;
     emit({
       phase: 'import',
-      processed,
+      processed: preparedCount,
       total,
       inserted: report.inserted,
       updated: report.updated,
@@ -672,6 +767,32 @@ const importClientMaster = async (
       unmatched: report.unmatched.length,
     });
   }
+
+  const clientBulk = await clientsService.bulkUpsertMasterClients({
+    preparedRows: preparedClients,
+    actorId,
+    cache,
+    chunkSize: IMPORT_BULK_CHUNK_SIZE,
+    onChunk: ({ written, report: clientReport }) => {
+      report.inserted = clientReport.inserted;
+      report.updated = clientReport.updated;
+      report.skipped = [...clientReport.skipped];
+      emit({
+        phase: 'import',
+        processed: total,
+        total,
+        inserted: report.inserted,
+        updated: report.updated,
+        unchanged: report.unchanged,
+        skipped: report.skipped.length,
+        unmatched: report.unmatched.length,
+      });
+    },
+  });
+
+  report.inserted = clientBulk.report.inserted;
+  report.updated = clientBulk.report.updated;
+  report.skipped = [...clientBulk.report.skipped];
 
   emit(
     {

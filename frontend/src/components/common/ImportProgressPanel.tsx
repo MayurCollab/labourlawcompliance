@@ -6,15 +6,21 @@ import { estimateRemainingMs, formatEta } from '@/utils/formatEta';
 
 type ImportProgressPanelProps = {
   progress: ImportProgressEvent;
+  /** Wall-clock start of the import (survives navigating away and back). */
+  startedAt?: number;
+  fileName?: string;
   className?: string;
 };
 
 export function ImportProgressPanel({
   progress,
+  startedAt: startedAtProp,
+  fileName,
   className,
 }: ImportProgressPanelProps) {
-  const [startedAt] = useState(() => Date.now());
+  const [startedAt] = useState(() => startedAtProp ?? Date.now());
   const [now, setNow] = useState(() => Date.now());
+  const effectiveStartedAt = startedAtProp ?? startedAt;
 
   useEffect(() => {
     if (progress.phase === 'rematch' || progress.processed >= progress.total) {
@@ -37,7 +43,7 @@ export function ImportProgressPanel({
       : 0;
 
   const remaining = Math.max(0, progress.total - progress.processed);
-  const elapsedMs = now - startedAt;
+  const elapsedMs = now - effectiveStartedAt;
   const etaMs = estimateRemainingMs(
     progress.processed,
     progress.total,
@@ -67,6 +73,9 @@ export function ImportProgressPanel({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium">{phaseLabel}</p>
+          {fileName ? (
+            <p className="text-sm text-muted-foreground">{fileName}</p>
+          ) : null}
           <p className="text-sm text-muted-foreground">
             {progress.processed.toLocaleString()} of{' '}
             {progress.total.toLocaleString()} rows done

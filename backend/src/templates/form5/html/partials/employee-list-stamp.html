@@ -1,0 +1,60 @@
+{{! PDF-safe right stamp: full-width table + right cell (Puppeteer ignores many flex/margin-auto rules). }}
+<table
+  class="employee-list-stamp"
+  width="100%"
+  cellpadding="0"
+  cellspacing="0"
+  border="0"
+  style="width:100%; border:none; border-collapse:collapse; margin-top:18px;"
+>
+  <tr>
+    <td
+      align="right"
+      valign="top"
+      style="border:none; background:transparent; padding:0; text-align:right;"
+    >
+      <table
+        class="employee-list-stamp-inner"
+        cellpadding="0"
+        cellspacing="0"
+        border="0"
+        style="width:240px; border:none; border-collapse:collapse; margin-left:auto;"
+      >
+        <tr>
+          <td
+            align="center"
+            style="border:none; background:transparent; padding:0; text-align:center; color:#1a4480;"
+          >
+            {{#if companyName}}
+            <div
+              class="els-company"
+              style="color:#1a4480; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.2px; line-height:1.3; text-align:center; margin:0 0 6px;"
+            >
+              For {{companyName}}
+            </div>
+            {{/if}}
+            {{#if signatureImageSrc}}
+            <img
+              class="els-img"
+              src="{{signatureImageSrc}}"
+              alt="Signature"
+              width="90"
+              style="display:block; width:90px; height:auto; max-height:42px; margin:0 auto 2px; object-fit:contain;"
+            />
+            {{/if}}
+            <div
+              class="els-line"
+              style="width:130px; height:0; border:none; border-bottom:1px solid #1a4480; margin:0 auto 4px;"
+            ></div>
+            <div
+              class="els-label"
+              style="color:#1a4480; font-size:11px; font-weight:bold; text-align:center; line-height:1.2;"
+            >
+              Authorized Signatory
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

@@ -7,7 +7,9 @@ import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
 import { useClientOptionsQuery } from '@/hooks/useClients';
@@ -28,6 +30,7 @@ export function EmployeesPage() {
   const [clientId, setClientId] = useState('');
   const [unmatched, setUnmatched] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(20);
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'createdAt',
     sortOrder: 'desc',
@@ -37,7 +40,7 @@ export function EmployeesPage() {
 
   const params: ListEmployeesParams = {
     page,
-    limit: 20,
+    limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     period: period || undefined,
     clientId: clientId || undefined,
@@ -188,6 +191,11 @@ export function EmployeesPage() {
         }}
         pagination={employeesQuery.data?.pagination}
         onPageChange={setPage}
+        pageSizeSelection={pageSize}
+        onPageSizeChange={(size) => {
+          setPage(1);
+          setPageSize(size);
+        }}
         emptyTitle="No employee rows yet"
         emptyDescription="Upload SalarySheet All Employees.xlsx on the Uploads page. Employees match clients by PHY_CODE or Client code (C0039)."
       />

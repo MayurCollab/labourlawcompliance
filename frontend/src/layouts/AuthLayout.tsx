@@ -9,10 +9,10 @@ import { APP_NAME } from '@/constants/app';
 export function AuthLayout() {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--muted)_0%,_transparent_55%)]" />
-      <div className="relative w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_color-mix(in_oklch,var(--primary)_18%,transparent)_0%,_transparent_55%)]" />
+      <div className="relative w-full max-w-md rounded-xl border border-border/80 bg-card/95 p-6 text-card-foreground shadow-lg ring-1 ring-primary/10 backdrop-blur-sm">
         <div className="mb-6 text-center">
-          <p className="text-lg font-semibold tracking-tight">{APP_NAME}</p>
+          <p className="text-lg font-semibold tracking-tight text-primary">{APP_NAME}</p>
         </div>
         <Outlet />
       </div>

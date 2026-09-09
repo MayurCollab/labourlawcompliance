@@ -15,8 +15,8 @@ const renderEmail = (content, variables) =>
   });
 
 /**
- * Queue a verification email (never blocks registration on SMTP).
- * Enqueue failures are logged by the caller — registration still succeeds.
+ * Send a verification email (failures are handled by the caller —
+ * registration still succeeds if SMTP fails).
  */
 export const sendVerificationEmail = async ({
   to,

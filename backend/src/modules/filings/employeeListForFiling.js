@@ -1,5 +1,5 @@
 import { normalizePhyCode } from '../uploads/masterParse.js';
-import { findSlabForGross } from './ptCompute.js';
+import { resolvePTax } from './ptCompute.js';
 
 export const normalizeLocationName = (value) =>
   String(value ?? '')
@@ -82,15 +82,22 @@ export const employeesForClientLocation = ({
 }) => {
   const matched = filterEmployeesForClientLocation({ employees, client, period });
 
-  return matched.map((employee, index) => ({
-    srNo: index + 1,
-    employeeNo: employee.employeeNo ?? '',
-    employeeName: employee.employeeName ?? '',
-    locationName: employee.locationName ?? '',
-    ptGross: employee.ptGross ?? null,
-    pTax: employee.pTax ?? null,
-    phyCode: employee.phyCode ?? '',
-  }));
+  return matched.map((employee, index) => {
+    const computedPTax =
+      slabs.length > 0
+        ? resolvePTax(slabs, employee.ptGross)
+        : (employee.pTax ?? resolvePTax([], employee.ptGross));
+
+    return {
+      srNo: index + 1,
+      employeeNo: employee.employeeNo ?? '',
+      employeeName: employee.employeeName ?? '',
+      locationName: employee.locationName ?? '',
+      ptGross: employee.ptGross ?? null,
+      pTax: computedPTax,
+      phyCode: employee.phyCode ?? '',
+    };
+  });
 };
 
 export const employeeCountsForList = (listed = [], slabs = []) => {
@@ -98,8 +105,10 @@ export const employeeCountsForList = (listed = [], slabs = []) => {
   let exemptEmployeeCount = 0;
 
   for (const employee of listed) {
-    const slab = slabs.length ? findSlabForGross(slabs, employee.ptGross) : null;
-    const rate = slab?.rate ?? Number(employee.pTax) ?? 0;
+    const rate =
+      slabs.length > 0
+        ? resolvePTax(slabs, employee.ptGross)
+        : Number(employee.pTax) || 0;
     if (Number(rate) > 0) {
       taxableEmployeeCount += 1;
     } else {

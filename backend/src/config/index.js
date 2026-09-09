@@ -21,7 +21,7 @@ if (missing.length > 0) {
 const env = process.env.NODE_ENV || 'development';
 const storageDriver = process.env.STORAGE_DRIVER || 'local';
 
-if (storageDriver === 's3') {
+if (storageDriver === 's3' || storageDriver === 's3-all') {
   const s3Required = [
     'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY',
@@ -36,16 +36,10 @@ if (storageDriver === 's3') {
   });
   if (s3Missing.length > 0) {
     console.error(
-      `[config] STORAGE_DRIVER=s3 requires: ${s3Missing.join(', ')}.`,
+      `[config] STORAGE_DRIVER=${storageDriver} requires: ${s3Missing.join(', ')}.`,
     );
     process.exit(1);
   }
-}
-
-if (env === 'production' && !process.env.REDIS_URL) {
-  console.warn(
-    '[config] REDIS_URL is unset — using in-memory rate limits and inline email sends. Set REDIS_URL in production so limits are shared across processes and emails go through the queue.',
-  );
 }
 
 const parseOriginList = (value) =>
@@ -74,9 +68,6 @@ const config = Object.freeze({
   corsOrigins,
 
   mongoUri: process.env.MONGO_URI,
-
-  /** Redis for rate-limit store + BullMQ. Optional in development/test. */
-  redisUrl: process.env.REDIS_URL || '',
 
   jwt: {
     secret: process.env.JWT_SECRET,

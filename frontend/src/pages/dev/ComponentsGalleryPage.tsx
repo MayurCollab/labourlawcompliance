@@ -44,7 +44,7 @@ import {
   TimePicker,
 } from '@/components/inputs';
 import { PageHeader } from '@/components/layout';
-import { DataTable, Pagination, type DataTableSort } from '@/components/tables';
+import { DataTable, Pagination, type DataTablePageSizeOption, type DataTableSort } from '@/components/tables';
 import { toastSuccess } from '@/utils/toast';
 
 type DemoRow = {
@@ -97,6 +97,7 @@ export function ComponentsGalleryPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(10);
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'name',
     sortOrder: 'asc',
@@ -313,13 +314,26 @@ export function ComponentsGalleryPage() {
           onSortChange={setSort}
           pagination={{
             page,
-            limit: 10,
+            limit: pageSize === 'all' ? demoRows.length : pageSize,
             total: demoRows.length,
-            totalPages: 2,
+            totalPages: pageSize === 'all' ? 1 : Math.max(1, Math.ceil(demoRows.length / pageSize)),
           }}
           onPageChange={setPage}
+          pageSizeSelection={pageSize}
+          onPageSizeChange={(size) => {
+            setPage(1);
+            setPageSize(size);
+          }}
         />
-        <Pagination page={2} totalPages={5} total={48} onPageChange={() => undefined} />
+        <Pagination
+          page={2}
+          totalPages={5}
+          total={48}
+          pageSize={10}
+          pageSizeSelection={10}
+          onPageChange={() => undefined}
+          onPageSizeChange={() => undefined}
+        />
       </Section>
 
       <Section title="Forms">

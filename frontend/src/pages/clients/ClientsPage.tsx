@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Download, MoreHorizontal } from 'lucide-react';
+import { Download } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
@@ -19,9 +19,15 @@ import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
+import {
+  RowActionItem,
+  RowActionsMenu,
+} from '@/components/tables/RowActionsMenu';
 import { PERMISSIONS } from '@/constants/permissions';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -78,6 +84,7 @@ export function ClientsPage() {
     locationId: '',
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(10);
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'createdAt',
     sortOrder: 'desc',
@@ -90,7 +97,7 @@ export function ClientsPage() {
 
   const listParams: ListClientsParams = {
     page,
-    limit: 10,
+    limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     locationId:
       typeof appliedFilters.locationId === 'string' && appliedFilters.locationId
@@ -181,51 +188,41 @@ export function ClientsPage() {
     {
       id: 'actions',
       header: '',
-      className: 'w-12 text-right',
+      className: 'text-right',
+      width: 72,
+      minWidth: 72,
+      maxWidth: 72,
       cell: (row) => {
         const open = menuClientId === row.id;
         return (
-          <div className="relative flex justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Row actions"
-              onClick={() => setMenuClientId(open ? null : row.id)}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-            {open ? (
-              <div className="absolute right-0 z-20 mt-8 w-36 rounded-lg border border-border bg-popover p-1 shadow-md">
-                <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>
-                  <button
-                    type="button"
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      setMenuClientId(null);
-                      setDrawerMode('edit');
-                      setEditingClient(row);
-                      setDrawerOpen(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-                </PermissionGate>
-                <PermissionGate permission={PERMISSIONS.CLIENTS_DELETE}>
-                  <button
-                    type="button"
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-destructive hover:bg-muted"
-                    onClick={() => {
-                      setMenuClientId(null);
-                      setPendingDelete(row);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </PermissionGate>
-              </div>
-            ) : null}
-          </div>
+          <RowActionsMenu
+            open={open}
+            onOpenChange={(next) => setMenuClientId(next ? row.id : null)}
+          >
+            <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>
+              <RowActionItem
+                onClick={() => {
+                  setMenuClientId(null);
+                  setDrawerMode('edit');
+                  setEditingClient(row);
+                  setDrawerOpen(true);
+                }}
+              >
+                Edit
+              </RowActionItem>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.CLIENTS_DELETE}>
+              <RowActionItem
+                destructive
+                onClick={() => {
+                  setMenuClientId(null);
+                  setPendingDelete(row);
+                }}
+              >
+                Delete
+              </RowActionItem>
+            </PermissionGate>
+          </RowActionsMenu>
         );
       },
     },
@@ -352,6 +349,11 @@ export function ClientsPage() {
             : undefined
         }
         onPageChange={setPage}
+        pageSizeSelection={pageSize}
+        onPageSizeChange={(size) => {
+          setPage(1);
+          setPageSize(size);
+        }}
         emptyTitle="No clients yet"
         emptyDescription="Upload MasterSheet All Clients.xlsx on the Uploads page. Addresses come from Client - Master.xlsx."
       />

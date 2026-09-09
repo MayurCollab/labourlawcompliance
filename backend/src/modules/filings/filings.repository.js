@@ -43,6 +43,9 @@ export const findFilingIds = (filter, { sort = { clientCode: 1 }, limit = 200 } 
 export const saveFiling = (filing, session = null) =>
   filing.save(session ? { session } : {});
 
+export const bulkWriteFilings = (ops, options = {}) =>
+  Filing.bulkWrite(ops, { ordered: false, ...options });
+
 export const softDeleteAllFilings = (actorId) =>
   Filing.updateMany(
     { isDeleted: false },

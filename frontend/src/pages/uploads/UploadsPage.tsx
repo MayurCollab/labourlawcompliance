@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Upload } from 'lucide-react';
 
 import { uploadsApi } from '@/api/uploads.api';
@@ -21,10 +21,13 @@ import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery } from '@/hooks/useClients';
+import { useImportProgress } from '@/hooks/useImportProgress';
 import {
   useCreateUploadMutation,
   useDownloadImportErrorsMutation,
@@ -38,8 +41,8 @@ import {
 } from '@/hooks/useUploads';
 import { cn } from '@/lib/utils';
 import { PATHS } from '@/routes/paths';
+import { importProgressStore } from '@/stores/importProgressStore';
 import type {
-  ImportProgressEvent,
   ImportReport,
   UploadDetail,
   UploadField,
@@ -49,14 +52,13 @@ import type {
   UploadPreviewRow,
   UploadStatus,
 } from '@/types/uploads.types';
-
+import { getApiErrorMessage } from '@/utils/apiError';
 const EXCEL_ACCEPT =
   '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const PURGE_MASTER_TEXT = 'CLEAR MASTER';
 const PURGE_SALARY_TEXT = 'CLEAR SALARY';
 const PURGE_CLIENT_MASTER_TEXT = 'CLEAR ADDRESSES';
-const ROWS_PAGE_SIZE = 50;
 const RECENT_VISIBLE = 5;
 const RECENT_FETCH_LIMIT = 50;
 
@@ -73,7 +75,7 @@ const KIND_OPTIONS: {
   {
     label: 'Salary employees',
     value: 'salary',
-    hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO and PT GROSS are required; PHY_CODE and Client code are optional.',
+    hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO is required; PT GROSS, PHY_CODE and Client code are optional. Blank PT GROSS uses P.Tax ₹200.',
   },
   {
     label: 'Client addresses / RC',
@@ -127,14 +129,16 @@ export function UploadsPage() {
   const [period, setPeriod] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [rowsPage, setRowsPage] = useState(1);
+  const [rowsPageSize, setRowsPageSize] =
+    useState<DataTablePageSizeOption>(50);
   const [purgeMasterOpen, setPurgeMasterOpen] = useState(false);
   const [purgeSalaryOpen, setPurgeSalaryOpen] = useState(false);
   const [purgeClientMasterOpen, setPurgeClientMasterOpen] = useState(false);
   const [purgeSalaryPeriod, setPurgeSalaryPeriod] = useState('');
   const [purgeSalaryCompany, setPurgeSalaryCompany] = useState('');
   const [historyExpanded, setHistoryExpanded] = useState(false);
-  const [importProgress, setImportProgress] =
-    useState<ImportProgressEvent | null>(null);
+  const importSession = useImportProgress();
+  const importRunning = importSession?.status === 'running';
 
   const listQuery = useUploadsQuery({ page: 1, limit: RECENT_FETCH_LIMIT });
   const companiesQuery = useClientOptionsQuery({
@@ -147,11 +151,6 @@ export function UploadsPage() {
   const purgeMasterMutation = usePurgeMasterMutation();
   const purgeSalaryMutation = usePurgeSalaryMutation();
   const purgeClientMasterMutation = usePurgeClientMasterMutation();
-
-  const activeKind = current?.kind ?? kind;
-  const isSalary = activeKind === 'salary';
-  const isClientMaster = activeKind === 'clientMaster';
-  const selectedKind = KIND_OPTIONS.find((option) => option.value === kind);
 
   const applyUpload = (
     upload: UploadDetail,
@@ -166,13 +165,44 @@ export function UploadsPage() {
     setRowsPage(1);
   };
 
+  // Rehydrate report / clear session when returning after a background import.
+  useEffect(() => {
+    if (!importSession) return;
+
+    if (importSession.status === 'running' && !current) {
+      void uploadsApi
+        .getById(importSession.uploadId)
+        .then((upload) => {
+          applyUpload(upload, upload.report);
+        })
+        .catch(() => {
+          /* keep progress panel even if detail fetch fails */
+        });
+      return;
+    }
+
+    if (importSession.status === 'completed' && importSession.result) {
+      applyUpload(importSession.result.upload, importSession.result.report);
+      importProgressStore.clear();
+      return;
+    }
+    if (importSession.status === 'failed') {
+      importProgressStore.clear();
+    }
+  }, [importSession, current]);
+
+  const activeKind = current?.kind ?? kind;
+  const isSalary = activeKind === 'salary';
+  const isClientMaster = activeKind === 'clientMaster';
+  const selectedKind = KIND_OPTIONS.find((option) => option.value === kind);
+
   const rowsQuery = useUploadRowsQuery(
     current?.id ?? null,
     {
       sheetName: current?.parse.selectedSheet ?? undefined,
       mapping,
       page: rowsPage,
-      limit: ROWS_PAGE_SIZE,
+      limit: resolveDataTableLimit(rowsPageSize),
       companyName: isSalary ? companyName || null : undefined,
     },
     { enabled: Boolean(current?.id) },
@@ -250,6 +280,8 @@ export function UploadsPage() {
         id: 'actions',
         header: '',
         className: 'text-right',
+        width: 200,
+        minWidth: 180,
         cell: (row) => (
           <div className="flex justify-end gap-2">
             {importHasErrors(row.report) ? (
@@ -320,6 +352,16 @@ export function UploadsPage() {
         ]}
       />
 
+      {importRunning && importSession && !current ? (
+        <PermissionGate permission={PERMISSIONS.UPLOADS_CREATE}>
+          <ImportProgressPanel
+            progress={importSession.progress}
+            startedAt={importSession.startedAt}
+            fileName={importSession.fileName}
+          />
+        </PermissionGate>
+      ) : null}
+
       <PermissionGate permission={PERMISSIONS.UPLOADS_CREATE}>
         <Card>
           <CardHeader>
@@ -378,7 +420,7 @@ export function UploadsPage() {
               onChange={(files) => setFile(files?.[0] ?? null)}
               hint={
                 kind === 'salary'
-                  ? 'Headers: EMPNO and PT GROSS. PHY_CODE and Client are optional. Prefer the OutPut sheet.'
+                  ? 'Headers: EMPNO required. PT GROSS, PHY_CODE and Client are optional. Prefer the OutPut sheet.'
                   : kind === 'clientMaster'
                     ? 'Headers: clientno, Address.1, RC Professional Tax Number.'
                     : 'Headers: Client, Name of Company, Location, Reg No.'
@@ -502,30 +544,36 @@ export function UploadsPage() {
                 loading={rowsQuery.isFetching}
                 pagination={rowsQuery.data?.pagination}
                 onPageChange={setRowsPage}
+                pageSizeSelection={rowsPageSize}
+                onPageSizeChange={(size) => {
+                  setRowsPage(1);
+                  setRowsPageSize(size);
+                }}
                 emptyTitle="No data rows"
                 emptyDescription="Pick a sheet that has the expected headers and data."
               />
             </div>
 
             <PermissionGate permission={PERMISSIONS.UPLOADS_CREATE}>
-              {importProgress ? (
-                <ImportProgressPanel progress={importProgress} />
+              {importRunning && importSession ? (
+                <ImportProgressPanel
+                  progress={importSession.progress}
+                  startedAt={importSession.startedAt}
+                  fileName={importSession.fileName}
+                />
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   className="w-full sm:w-auto"
-                  disabled={!canSave || importMutation.isPending}
+                  disabled={!canSave || importRunning || importMutation.isPending}
                   onClick={async () => {
-                    setImportProgress({
-                      phase: 'import',
-                      processed: 0,
+                    if (!current) return;
+                    importProgressStore.start({
+                      uploadId: current.id,
+                      kind: current.kind,
+                      fileName: current.originalName,
                       total: rowCount,
-                      inserted: 0,
-                      updated: 0,
-                      unchanged: 0,
-                      skipped: 0,
-                      unmatched: 0,
                     });
                     try {
                       const result = await importMutation.mutateAsync({
@@ -539,15 +587,22 @@ export function UploadsPage() {
                             ? companyName || null
                             : undefined,
                         },
-                        onProgress: setImportProgress,
+                        onProgress: importProgressStore.setProgress,
                       });
-                      applyUpload(result.upload, result.report);
-                    } finally {
-                      setImportProgress(null);
+                      importProgressStore.complete(result);
+                    } catch (error) {
+                      importProgressStore.fail(
+                        getApiErrorMessage(
+                          error,
+                          'Could not import this workbook',
+                        ),
+                      );
                     }
                   }}
                 >
-                  {importMutation.isPending ? 'Saving…' : saveLabel}
+                  {importRunning || importMutation.isPending
+                    ? 'Saving…'
+                    : saveLabel}
                 </Button>
               </div>
             </PermissionGate>

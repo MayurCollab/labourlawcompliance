@@ -60,7 +60,13 @@ export function BulkGenerateModal({
   const [now, setNow] = useState(() => Date.now());
   const runKeyRef = useRef<string | null>(null);
   const onFinishedRef = useRef(onFinished);
+  const abortRef = useRef<AbortController | null>(null);
   onFinishedRef.current = onFinished;
+
+  const closeModal = () => {
+    abortRef.current?.abort();
+    onOpenChange(false);
+  };
 
   useEffect(() => {
     if (!open || !payload) return;
@@ -69,6 +75,8 @@ export function BulkGenerateModal({
     if (runKeyRef.current === runKey) return;
     runKeyRef.current = runKey;
 
+    const abort = new AbortController();
+    abortRef.current = abort;
     let cancelled = false;
     setRunning(true);
     setError(null);
@@ -85,8 +93,9 @@ export function BulkGenerateModal({
           (event) => {
             if (!cancelled) setProgress(event);
           },
+          abort.signal,
         );
-        if (cancelled) return;
+        if (cancelled || abort.signal.aborted) return;
         setReport(result);
         setProgress({
           phase: 'generate',
@@ -103,6 +112,9 @@ export function BulkGenerateModal({
           `Generated ${result.generated}. Skipped ${result.skipped}. Failed ${result.failed}.`,
         );
       } catch (err) {
+        if (cancelled || abort.signal.aborted || (err as Error)?.name === 'AbortError') {
+          return;
+        }
         if (!cancelled) {
           setError(getApiErrorMessage(err, 'Could not bulk generate Form 5'));
           toastError(getApiErrorMessage(err, 'Could not bulk generate Form 5'));
@@ -120,6 +132,7 @@ export function BulkGenerateModal({
 
   useEffect(() => {
     if (open) return;
+    abortRef.current?.abort();
     runKeyRef.current = null;
     setProgress(emptyProgress());
     setReport(null);
@@ -192,7 +205,7 @@ export function BulkGenerateModal({
       toastSuccess(
         result.mode === 'folder'
           ? `Saved ${result.saved} file(s) to the selected folder`
-          : `Started ${result.saved} download(s)`,
+          : `Downloaded ZIP with ${result.saved} file(s)`,
       );
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
@@ -209,14 +222,13 @@ export function BulkGenerateModal({
     <Modal
       open={open}
       onOpenChange={(next) => {
-        if (running || downloading) return;
-        onOpenChange(next);
+        if (!next) closeModal();
       }}
-      closeOnOverlayClick={!running && !downloading}
+      closeOnOverlayClick
       title="Bulk Form 5 generate"
       description={
         running
-          ? 'Generating PDFs… keep this window open until it finishes.'
+          ? 'Computing PT slabs and generating PDFs… you can close this window at any time.'
           : report
             ? 'Generation finished. Download the PDFs below.'
             : error
@@ -235,16 +247,15 @@ export function BulkGenerateModal({
             >
               {canPickDownloadFolder()
                 ? `Choose folder & download (${generatedRows.length})`
-                : `Download all (${generatedRows.length})`}
+                : `Download ZIP (${generatedRows.length})`}
             </Button>
           ) : null}
           <Button
             type="button"
             variant="outline"
-            disabled={running || downloading}
-            onClick={() => onOpenChange(false)}
+            onClick={closeModal}
           >
-            {running ? 'Working…' : 'Close'}
+            Close
           </Button>
         </div>
       }
@@ -255,7 +266,7 @@ export function BulkGenerateModal({
             <div>
               <p className="text-sm font-medium">
                 {running
-                  ? 'Generating Form 5 PDFs…'
+                  ? 'Computing PT slabs & generating Form 5 PDFs…'
                   : report
                     ? 'Generation complete'
                     : error
@@ -360,8 +371,8 @@ export function BulkGenerateModal({
             </div>
             {!canPickDownloadFolder() ? (
               <p className="text-xs text-muted-foreground">
-                This browser cannot pick a folder. Files download one by one
-                instead.
+                Folder picker needs a secure context (https or localhost).
+                Files are packed into one ZIP instead.
               </p>
             ) : null}
           </div>

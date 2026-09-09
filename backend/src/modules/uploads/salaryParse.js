@@ -59,7 +59,7 @@ export const SALARY_FIELDS = Object.freeze([
     label: 'PT GROSS',
     aliases: ['pt gross', 'ptgross'],
     group: 'employee',
-    required: true,
+    required: false,
   },
   {
     key: 'phyCode',
@@ -84,7 +84,7 @@ export const SALARY_FIELDS = Object.freeze([
   },
 ]);
 
-export const SALARY_REQUIRED_KEYS = Object.freeze(['employeeNo', 'ptGross']);
+export const SALARY_REQUIRED_KEYS = Object.freeze(['employeeNo']);
 
 const fieldMeta = () =>
   SALARY_FIELDS.map(({ key, label, required, group }) => ({
@@ -96,16 +96,11 @@ const fieldMeta = () =>
 
 export const looksLikeSalaryHeader = (cells) => {
   const labels = new Set((cells || []).map(normalizeHeader).filter(Boolean));
-  const hasEmp =
+  return (
     labels.has('empno') ||
     labels.has('emp no') ||
-    labels.has('employee no');
-  const hasAmount =
-    labels.has('pt gross') ||
-    labels.has('ptgross') ||
-    labels.has('p tax') ||
-    labels.has('ptax');
-  return hasEmp && hasAmount;
+    labels.has('employee no')
+  );
 };
 
 export const detectSalaryHeaderRow = (rows, scanLimit = HEADER_SCAN_ROWS) => {

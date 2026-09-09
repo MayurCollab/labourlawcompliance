@@ -118,15 +118,24 @@ const buildDocx = (tokens) => {
 };
 
 describe('form5Values', () => {
-  test('filename uses client, location, period', () => {
+  test('filename uses location, company first word, and month', () => {
     expect(
       form5Filename({
+        companyName: 'Acer credit india',
         clientCode: 'C0099',
         locationName: 'Anand',
         period: '2026-07',
+        ext: '.pdf',
+      }),
+    ).toBe('Anand_Acer_July-26.pdf');
+    expect(
+      form5Filename({
+        companyName: 'SMFG India Credit Co. Ltd. [83]',
+        locationName: 'Ahmedabad',
+        period: '2026-07',
         ext: '.xlsx',
       }),
-    ).toBe('C0099_Anand_2026-07_Form5.xlsx');
+    ).toBe('Ahmedabad_SMFG_July-26.xlsx');
   });
 
   test('period bounds are first and last day', () => {
@@ -171,6 +180,61 @@ describe('form5Values', () => {
     expect(built.scalars.interest).toBe('NIL');
     expect(built.scalars.totalA).toBe(600);
     expect(built.scalars.periodFrom).toBe('01/07/2026');
+    expect(built.scalars.showPhyCode).toBe(false);
+    expect(built.scalars.showEmpNo).toBe(false);
+    expect(built.scalars.showPtGross).toBe(false);
+    expect(built.scalars.employeeListColCount).toBe(4);
+  });
+
+  test('buildForm5Values shows PHY CODE column when client has phyCode', () => {
+    const built = buildForm5Values({
+      filing: {
+        clientCode: 'C0099',
+        period: '2026-07',
+        computation: { slabs: [], totalA: 200, totalB: 0, interest: 0 },
+      },
+      client: {
+        companyName: 'SMFG',
+        phyCode: '0083',
+        location: { name: 'Anand' },
+      },
+      settings: {},
+    });
+    expect(built.scalars.showPhyCode).toBe(true);
+    expect(built.scalars.showEmpNo).toBe(false);
+    expect(built.scalars.showPtGross).toBe(false);
+    expect(built.scalars.employeeListColCount).toBe(5);
+    expect(built.scalars.employeeListLabelColspan).toBe(4);
+  });
+
+  test('buildForm5Values shows EMP.NO when employees have employeeNo', () => {
+    const built = buildForm5Values({
+      filing: {
+        clientCode: 'C0099',
+        period: '2026-07',
+        computation: { slabs: [], totalA: 200, totalB: 0, interest: 0 },
+      },
+      client: {
+        companyName: 'SMFG',
+        location: { name: 'Anand' },
+      },
+      settings: {},
+      employees: [
+        {
+          srNo: 1,
+          employeeNo: 'E1001',
+          employeeName: 'Asha',
+          locationName: 'Anand',
+          ptGross: 15000,
+          pTax: 200,
+        },
+      ],
+    });
+    expect(built.scalars.showEmpNo).toBe(true);
+    expect(built.scalars.showPhyCode).toBe(false);
+    expect(built.scalars.showPtGross).toBe(true);
+    expect(built.scalars.employeeListColCount).toBe(6);
+    expect(built.scalars.employeeListLabelColspan).toBe(4);
   });
 
   test('buildForm5Values applies overrides, employees, and additional tax', () => {

@@ -1,7 +1,5 @@
-import { RedisStore } from 'rate-limit-redis';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
-import { getRedis, isRedisEnabled } from '../config/redis.js';
 import config from '../config/index.js';
 import { sendError } from '../utils/responseFormatter.js';
 
@@ -14,18 +12,8 @@ const rateLimitHandler = (_req, res) =>
     'RATE_LIMIT_EXCEEDED',
   );
 
-const buildStore = (prefix) => {
-  if (!isRedisEnabled()) return undefined;
-  const client = getRedis();
-  return new RedisStore({
-    prefix: `rl:${prefix}:`,
-    sendCommand: (...args) => client.call(...args),
-  });
-};
-
 /**
- * Global IP limiter — Redis-backed when REDIS_URL is set, otherwise memory
- * (single-instance / local-dev fallback).
+ * Global IP limiter (in-memory store — suitable for single-instance deploys).
  */
 export const globalLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
@@ -33,7 +21,6 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => config.isTest || req.method === 'OPTIONS',
-  store: buildStore('global'),
   handler: rateLimitHandler,
 });
 
@@ -45,7 +32,6 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   skip: (req) => config.isTest || req.method === 'OPTIONS',
-  store: buildStore('auth'),
   handler: rateLimitHandler,
 });
 
@@ -67,6 +53,5 @@ export const userWriteLimiter = rateLimit({
     req.user?.id
       ? `user:${req.user.id}`
       : `ip:${ipKeyGenerator(req.ip)}`,
-  store: buildStore('user-write'),
   handler: rateLimitHandler,
 });

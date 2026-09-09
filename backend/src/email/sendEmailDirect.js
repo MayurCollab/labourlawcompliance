@@ -7,7 +7,6 @@ const SMTP_TIMEOUT_MS = 10_000;
 
 /**
  * Low-level SMTP send with hard timeout + retry/backoff.
- * Used by the BullMQ worker and by the no-Redis fallback path.
  */
 export const sendEmailDirect = async ({ to, subject, html }) =>
   pRetry(

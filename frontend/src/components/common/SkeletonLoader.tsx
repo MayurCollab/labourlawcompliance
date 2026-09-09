@@ -7,7 +7,7 @@ type SkeletonProps = {
 function Bone({ className }: SkeletonProps) {
   return (
     <div
-      className={cn('animate-pulse rounded-md bg-muted', className)}
+      className={cn('llc-skeleton-bone', className)}
       aria-hidden
     />
   );

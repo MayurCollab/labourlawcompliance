@@ -40,6 +40,9 @@ export const findUnmatchedEmployees = () =>
 export const saveEmployee = (employee, session = null) =>
   employee.save(session ? { session } : {});
 
+export const bulkWriteEmployees = (ops, options = {}) =>
+  Employee.bulkWrite(ops, { ordered: false, ...options });
+
 export const softDeleteEmployees = (filter, actorId) =>
   Employee.updateMany(
     { ...filter, isDeleted: false },

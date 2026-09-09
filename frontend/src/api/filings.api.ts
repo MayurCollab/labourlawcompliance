@@ -157,6 +157,7 @@ export const filingsApi = {
   bulkGenerateWithProgress: async (
     payload: BulkGeneratePayload,
     onProgress: (event: BulkGenerateProgressEvent) => void,
+    signal?: AbortSignal,
   ): Promise<BulkGenerateReport> => {
     const token = store.getState().auth.accessToken;
     const url = `${getApiBaseUrl()}/api/v1/filings/bulk-generate?stream=1`;
@@ -164,6 +165,7 @@ export const filingsApi = {
     const response = await fetch(url, {
       method: 'POST',
       credentials: 'include',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/x-ndjson',

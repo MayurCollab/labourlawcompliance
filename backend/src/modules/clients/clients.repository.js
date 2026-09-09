@@ -29,6 +29,15 @@ export const findAllForImport = () => Client.find();
 export const saveClient = (client, session = null) =>
   client.save(session ? { session } : {});
 
+export const bulkWriteClients = (ops, options = {}) =>
+  Client.bulkWrite(ops, { ordered: false, ...options });
+
+export const findClientsByCodes = (codes) => {
+  const list = [...new Set((codes || []).filter(Boolean))];
+  if (!list.length) return Promise.resolve([]);
+  return Client.find({ clientCode: { $in: list } });
+};
+
 /** Clear address + RC fields from Client-Master imports (clients stay). */
 export const clearAddressFields = (actorId) =>
   Client.updateMany(
