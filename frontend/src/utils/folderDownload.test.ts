@@ -48,7 +48,7 @@ describe('downloadFilesToFolder', () => {
         getBlob: async () =>
           ({
             arrayBuffer: async () => new TextEncoder().encode('pdf-a'),
-          }) as Blob,
+          }) as unknown as Blob,
       },
       {
         id: '2',
@@ -56,7 +56,7 @@ describe('downloadFilesToFolder', () => {
         getBlob: async () =>
           ({
             arrayBuffer: async () => new TextEncoder().encode('pdf-b'),
-          }) as Blob,
+          }) as unknown as Blob,
       },
     ]);
 
