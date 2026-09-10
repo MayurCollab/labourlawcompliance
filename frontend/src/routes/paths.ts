@@ -13,6 +13,8 @@ export const PATHS = {
   uploads: '/uploads',
   employees: '/employees',
   form5: '/form-5',
+  form5Whatsapp: '/form-5/whatsapp',
+  whatsappSends: '/whatsapp-sends',
   templates: '/templates',
   ptSlabs: '/pt-slabs',
   /** Admin modules */

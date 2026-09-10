@@ -92,7 +92,7 @@ export const useExportClientsMutation = () =>
     mutationFn: (
       params: Pick<
         ListClientsParams,
-        'search' | 'locationId' | 'fundCode' | 'sortBy' | 'sortOrder'
+        'search' | 'locationId' | 'locationIds' | 'fundCode' | 'sortBy' | 'sortOrder'
       > = {},
     ) => clientsApi.exportExcel(params),
     onSuccess: () => {

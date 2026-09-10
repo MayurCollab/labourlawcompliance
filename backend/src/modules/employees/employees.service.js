@@ -34,6 +34,7 @@ export const listEmployees = async (query) => {
     search,
     period,
     clientId,
+    clientIds,
     phyCode,
     unmatched,
     sortBy,
@@ -46,7 +47,15 @@ export const listEmployees = async (query) => {
     filter.$or = [{ employeeNo: regex }, { employeeName: regex }];
   }
   if (period) filter.period = period;
-  if (clientId) filter.client = clientId;
+  const clients = [
+    ...new Set(
+      [...(Array.isArray(clientIds) ? clientIds : []), clientId]
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  if (clients.length === 1) filter.client = clients[0];
+  else if (clients.length > 1) filter.client = { $in: clients };
   if (phyCode) {
     const normalized = normalizePhyCode(phyCode);
     if (normalized) filter.phyCode = normalized;

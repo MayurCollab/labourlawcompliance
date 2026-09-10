@@ -17,6 +17,7 @@ import { serveUploadMiddleware } from './middleware/serveUpload.js';
 import { metricsMiddleware, registry } from './observability/metrics.js';
 import { sentryEnabled, Sentry } from './observability/sentry.js';
 import v1Router from './routes/index.js';
+import webhooksRouter from './routes/webhooks.routes.js';
 import { isPrivateNetworkOrigin } from './utils/privateNetworkOrigin.js';
 
 const app = express();
@@ -158,6 +159,12 @@ if (config.enableSwagger) {
 }
 
 app.use('/api/v1', apiCacheControl, v1Router);
+
+/**
+ * MSG91 WhatsApp outbound delivery reports (configured in MSG91 dashboard as
+ * /api/webhooks/whatsapp/status — outside /api/v1, no auth).
+ */
+app.use('/api/webhooks', webhooksRouter);
 
 app.use(notFound);
 

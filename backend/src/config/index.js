@@ -19,7 +19,7 @@ if (missing.length > 0) {
 }
 
 const env = process.env.NODE_ENV || 'development';
-const storageDriver = process.env.STORAGE_DRIVER || 'local';
+const storageDriver = process.env.STORAGE_DRIVER || (env === 'test' ? 'local' : 's3');
 
 if (storageDriver === 's3' || storageDriver === 's3-all') {
   const s3Required = [
@@ -103,6 +103,24 @@ const config = Object.freeze({
     from:
       process.env.EMAIL_FROM ||
       'ACC Labour Law Compliance <no-reply@acclabourlaw.local>',
+  },
+
+  /** MSG91 WhatsApp outbound (Form 5 document template). */
+  msg91: {
+    authKey: process.env.MSG91_AUTH_KEY || '',
+    integratedNumber:
+      process.env.MSG91_WHATSAPP_NUMBER || '918320455693',
+    templateName:
+      process.env.MSG91_TEMPLATE_NAME || 'ankit_chokshi_new',
+    templateNamespace:
+      process.env.MSG91_TEMPLATE_NAMESPACE ||
+      'f81e39d2_346b_4801_8a3d_b74b0141f1e2',
+    templateLanguage: process.env.MSG91_TEMPLATE_LANGUAGE || 'en',
+    apiUrl:
+      process.env.MSG91_WHATSAPP_API_URL ||
+      'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+    /** Optional shared secret for POST /whatsapp-sends/webhooks/msg91 */
+    webhookSecret: process.env.MSG91_WEBHOOK_SECRET || '',
   },
 
   storage: {

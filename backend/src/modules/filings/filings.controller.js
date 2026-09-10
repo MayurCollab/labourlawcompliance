@@ -95,3 +95,12 @@ export const downloadFiling = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).send(buffer);
 });
+
+export const sendFilingWhatsApp = asyncHandler(async (req, res) => {
+  const result = await filingsService.sendFilingWhatsApp(
+    req.params.id,
+    req.body,
+    req.user.id,
+  );
+  return sendSuccess(res, result, FILINGS_MESSAGES.WHATSAPP_SENT);
+});

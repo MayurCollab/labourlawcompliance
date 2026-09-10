@@ -25,11 +25,12 @@ jest.unstable_mockModule('../../src/storage/s3.storage.js', () => ({
   isOurS3ObjectUrl: (storedPath) =>
     typeof storedPath === 'string' &&
     /^https:\/\/.+\.amazonaws\.com\//i.test(storedPath) &&
-    /\/(avatars|generated)\//i.test(storedPath),
+    /\/(avatars|generated|documents)\//i.test(storedPath),
 }));
 
 const {
   S3_FOLDERS,
+  LOCAL_FOLDERS,
   saveFile,
   saveDocument,
   deleteFile,
@@ -41,8 +42,9 @@ describe('hybrid storage routing', () => {
     jest.clearAllMocks();
   });
 
-  test('S3_FOLDERS is only avatars and generated', () => {
-    expect([...S3_FOLDERS].sort()).toEqual(['avatars', 'generated']);
+  test('S3_FOLDERS is avatars, documents, and generated (templates stay local)', () => {
+    expect([...S3_FOLDERS].sort()).toEqual(['avatars', 'documents', 'generated']);
+    expect([...LOCAL_FOLDERS]).toEqual(['templates']);
   });
 
   test('saveFile routes avatars to S3', async () => {
@@ -52,19 +54,18 @@ describe('hybrid storage routing', () => {
     expect(localSaveFile).not.toHaveBeenCalled();
   });
 
-  test('saveDocument routes generated to S3 and documents/templates to local', async () => {
+  test('saveDocument routes generated and documents to S3; templates stay local', async () => {
     s3SaveDocument.mockResolvedValueOnce({ path: '/uploads/generated/a.pdf' });
-    localSaveDocument.mockResolvedValue({ path: '/uploads/documents/a.xlsx' });
 
     await saveDocument({ folder: 'generated', buffer: Buffer.from('x'), mimetype: 'application/pdf' });
     expect(s3SaveDocument).toHaveBeenCalledTimes(1);
     expect(localSaveDocument).not.toHaveBeenCalled();
 
     jest.clearAllMocks();
-    localSaveDocument.mockResolvedValueOnce({ path: '/uploads/documents/b.xlsx' });
+    s3SaveDocument.mockResolvedValueOnce({ path: '/uploads/documents/b.xlsx' });
     await saveDocument({ folder: 'documents', buffer: Buffer.from('x'), mimetype: 'application/vnd.ms-excel' });
-    expect(localSaveDocument).toHaveBeenCalledTimes(1);
-    expect(s3SaveDocument).not.toHaveBeenCalled();
+    expect(s3SaveDocument).toHaveBeenCalledTimes(1);
+    expect(localSaveDocument).not.toHaveBeenCalled();
 
     jest.clearAllMocks();
     localSaveDocument.mockResolvedValueOnce({ path: '/uploads/templates/c.html' });
@@ -82,7 +83,8 @@ describe('hybrid storage routing', () => {
     expect(localReadFileBuffer).not.toHaveBeenCalled();
 
     await readFileBuffer('/uploads/documents/b.xlsx');
-    expect(localReadFileBuffer).toHaveBeenCalledWith('/uploads/documents/b.xlsx');
+    expect(s3ReadFileBuffer).toHaveBeenCalledWith('/uploads/documents/b.xlsx');
+    expect(localReadFileBuffer).not.toHaveBeenCalled();
 
     await deleteFile('/uploads/generated/c.pdf');
     expect(s3DeleteFile).toHaveBeenCalledWith('/uploads/generated/c.pdf');

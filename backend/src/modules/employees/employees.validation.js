@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  objectIdListSchema,
   objectIdSchema,
   paginationQuerySchema,
 } from '../../validations/common.validation.js';
@@ -14,6 +15,7 @@ export const listEmployeesQuerySchema = paginationQuerySchema.extend({
     .regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM')
     .optional(),
   clientId: objectIdSchema.optional(),
+  clientIds: objectIdListSchema,
   phyCode: z.string().trim().max(32).optional(),
   unmatched: z
     .enum(['true', 'false'])

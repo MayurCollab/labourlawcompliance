@@ -12,6 +12,7 @@ import {
   downloadFilingQuerySchema,
   generateFilingBodySchema,
   listFilingsQuerySchema,
+  sendFilingWhatsAppSchema,
   updateFilingOverridesSchema,
 } from './filings.validation.js';
 
@@ -131,6 +132,21 @@ router.get(
   checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
   validate({ params: idParamSchema, query: downloadFilingQuerySchema }),
   filingsController.downloadFiling,
+);
+
+/**
+ * @openapi
+ * /filings/{id}/whatsapp:
+ *   post:
+ *     tags: [Filings]
+ *     summary: Send the generated Form 5 PDF on WhatsApp via MSG91
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post(
+  '/:id/whatsapp',
+  checkPermission(PERMISSION_NAMES.FILINGS_SEND),
+  validate({ params: idParamSchema, body: sendFilingWhatsAppSchema }),
+  filingsController.sendFilingWhatsApp,
 );
 
 export default router;

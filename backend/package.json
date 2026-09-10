@@ -11,6 +11,7 @@
     "seed": "node src/database/seeders/seed.js",
     "verify:form5": "node scripts/verifyForm5Flow.mjs",
     "setup:s3": "node scripts/setupS3.mjs",
+    "migrate:uploads-s3": "node scripts/migrateUploadsToS3.mjs",
     "setup:chromium-deps": "node scripts/installChromiumOsDeps.mjs --force",
     "postinstall": "node scripts/installChromiumOsDeps.mjs",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.js",

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  objectIdListSchema,
   objectIdSchema,
   paginationQuerySchema,
 } from '../../validations/common.validation.js';
@@ -18,6 +19,7 @@ const optionalText = (max) =>
 export const listClientsQuerySchema = paginationQuerySchema.extend({
   search: z.string().trim().max(100).optional(),
   locationId: objectIdSchema.optional(),
+  locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),
   sortBy: z.enum(CLIENT_SORTABLE_FIELDS).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
@@ -26,6 +28,7 @@ export const listClientsQuerySchema = paginationQuerySchema.extend({
 export const exportClientsQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
   locationId: objectIdSchema.optional(),
+  locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),
   sortBy: z.enum(CLIENT_SORTABLE_FIELDS).default('clientCode'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),

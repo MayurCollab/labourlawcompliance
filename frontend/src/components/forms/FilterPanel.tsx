@@ -4,20 +4,29 @@ import { Button } from '@/components/buttons/Button';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { DatePicker } from '@/components/inputs/DatePicker';
 import { Input } from '@/components/inputs/Input';
+import { MultiSelect } from '@/components/inputs/MultiSelect';
 import { Select, type SelectOption } from '@/components/inputs/Select';
 import { cn } from '@/lib/utils';
 
-export type FilterFieldType = 'text' | 'select' | 'checkbox' | 'date';
+export type FilterFieldType =
+  | 'text'
+  | 'select'
+  | 'multiSelect'
+  | 'checkbox'
+  | 'date';
 
 export type FilterFieldConfig = {
   key: string;
   label: string;
   type: FilterFieldType;
   placeholder?: string;
+  searchPlaceholder?: string;
   options?: SelectOption[];
 };
 
-export type FilterValues = Record<string, string | boolean | undefined>;
+export type FilterValue = string | boolean | string[] | undefined;
+
+export type FilterValues = Record<string, FilterValue>;
 
 export type FilterPanelProps = {
   fields: FilterFieldConfig[];
@@ -27,7 +36,15 @@ export type FilterPanelProps = {
   onApply?: (values: FilterValues) => void;
   onReset?: () => void;
   title?: ReactNode;
+  /** Optional actions row under the fields (e.g. bottom-right buttons). */
+  footer?: ReactNode;
   className?: string;
+};
+
+const asStringArray = (value: FilterValue): string[] => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string' && value) return [value];
+  return [];
 };
 
 /**
@@ -41,9 +58,10 @@ export function FilterPanel({
   onApply,
   onReset,
   title = 'Filters',
+  footer,
   className,
 }: FilterPanelProps) {
-  const setValue = (key: string, value: string | boolean | undefined) => {
+  const setValue = (key: string, value: FilterValue) => {
     const next = { ...values, [key]: value };
     onChange(next);
     onApply?.(next);
@@ -52,7 +70,7 @@ export function FilterPanel({
   return (
     <div
       className={cn(
-        'space-y-4 rounded-xl border border-border/80 bg-card/90 p-4 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm',
+        'space-y-3 rounded-xl border border-border/80 bg-card/90 p-4 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm',
         className,
       )}
     >
@@ -65,8 +83,22 @@ export function FilterPanel({
         ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((field) => {
+          if (field.type === 'multiSelect') {
+            return (
+              <MultiSelect
+                key={field.key}
+                label={field.label}
+                options={field.options ?? []}
+                placeholder={field.placeholder}
+                searchPlaceholder={field.searchPlaceholder ?? 'Search…'}
+                value={asStringArray(values[field.key])}
+                onChange={(next) => setValue(field.key, next)}
+              />
+            );
+          }
+
           if (field.type === 'select') {
             return (
               <Select
@@ -112,7 +144,16 @@ export function FilterPanel({
             />
           );
         })}
+
+        {footer ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-2 lg:col-span-1">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+
+/** Normalize a filter value to a string id list for API query params. */
+export const filterIds = (value: FilterValue): string[] => asStringArray(value);

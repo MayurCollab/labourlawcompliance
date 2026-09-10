@@ -7,6 +7,7 @@ export type FilingClientRef = {
   includeEmployeesOnForm5?: boolean;
   address?: string | null;
   signatoryName?: string | null;
+  contactNumber?: string | null;
 };
 
 export type FilingSlabRow = {
@@ -125,7 +126,9 @@ export type ListFilingsParams = {
   search?: string;
   period?: string;
   locationId?: string;
+  locationIds?: string[];
   clientId?: string;
+  clientIds?: string[];
   generateStatus?: 'pending' | 'generated' | 'failed';
   sortBy?: 'period' | 'clientCode' | 'createdAt' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';
@@ -145,9 +148,22 @@ export type BulkGeneratePayload = {
   ids?: string[];
   period?: string;
   locationId?: string;
+  locationIds?: string[];
   clientId?: string;
+  clientIds?: string[];
   generateStatus?: 'pending' | 'generated' | 'failed';
   search?: string;
+};
+
+export type SendFilingWhatsAppPayload = {
+  phone?: string;
+  savePhone?: boolean;
+};
+
+export type SendFilingWhatsAppResult = {
+  filing: Filing;
+  phone: string;
+  msg91: unknown;
 };
 
 export type BulkGenerateRow = {

@@ -39,6 +39,7 @@ export type ListClientsParams = {
   limit?: number;
   search?: string;
   locationId?: string;
+  locationIds?: string[];
   fundCode?: string;
   sortBy?: 'clientCode' | 'companyName' | 'createdAt' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';

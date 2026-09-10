@@ -9,13 +9,14 @@ import * as s3Storage from './s3.storage.js';
  * Local disk uses /uploads/... paths. S3 objects store a full HTTPS
  * bucket URL in MongoDB (still private — download via the API).
  *
- * `s3` uses hybrid routing: only avatars/ and generated/ go to the bucket;
- * documents/ and templates/ stay on local disk.
+ * `s3` (app default): documents/, generated/, avatars/ go to the bucket;
+ * templates/ stay on local disk so Form 5 layouts are unchanged.
+ * `local` is for automated tests only.
  */
 const providers = {
   local: localStorage,
   s3: hybridStorage,
-  /** Full-bucket mode (tests / future). Prefer `s3` for selective folders. */
+  /** Put templates in the bucket too. Prefer `s3` so Form 5 templates stay local. */
   's3-all': s3Storage,
 };
 

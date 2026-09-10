@@ -12,6 +12,7 @@ const toQuery = (params: ListEmployeesParams) => {
   if (params.search) query.search = params.search;
   if (params.period) query.period = params.period;
   if (params.clientId) query.clientId = params.clientId;
+  if (params.clientIds?.length) query.clientIds = params.clientIds.join(',');
   if (params.phyCode) query.phyCode = params.phyCode;
   if (params.unmatched !== undefined) {
     query.unmatched = String(params.unmatched);

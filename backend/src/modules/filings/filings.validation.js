@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  objectIdListSchema,
   objectIdSchema,
   paginationQuerySchema,
 } from '../../validations/common.validation.js';
@@ -11,17 +12,18 @@ const periodSchema = z
   .trim()
   .regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM');
 
-export const listFilingsQuerySchema = paginationQuerySchema
-  .extend({
-    search: z.string().trim().max(100).optional(),
-    period: periodSchema.optional(),
-    locationId: objectIdSchema.optional(),
-    clientId: objectIdSchema.optional(),
-    generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
-    sortBy: z.enum(FILING_SORTABLE_FIELDS).default('period'),
-    sortOrder: z.enum(['asc', 'desc']).default('desc'),
-    limit: z.coerce.number().int().min(1).max(10000).default(50),
-  });
+export const listFilingsQuerySchema = paginationQuerySchema.extend({
+  search: z.string().trim().max(100).optional(),
+  period: periodSchema.optional(),
+  locationId: objectIdSchema.optional(),
+  locationIds: objectIdListSchema,
+  clientId: objectIdSchema.optional(),
+  clientIds: objectIdListSchema,
+  generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
+  sortBy: z.enum(FILING_SORTABLE_FIELDS).default('period'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  limit: z.coerce.number().int().min(1).max(10000).default(50),
+});
 
 export const downloadFilingQuerySchema = z.object({
   version: z.coerce.number().int().positive().optional(),
@@ -43,7 +45,9 @@ export const bulkGenerateFilingsSchema = z
     ids: z.array(objectIdSchema).max(200).optional(),
     period: periodSchema.optional(),
     locationId: objectIdSchema.optional(),
+    locationIds: objectIdListSchema,
     clientId: objectIdSchema.optional(),
+    clientIds: objectIdListSchema,
     generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
     search: z.string().trim().max(100).optional(),
   })
@@ -56,3 +60,8 @@ export const bulkGenerateFilingsSchema = z
       });
     }
   });
+
+export const sendFilingWhatsAppSchema = z.object({
+  phone: z.string().trim().max(32).optional(),
+  savePhone: z.boolean().optional(),
+});

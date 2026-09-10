@@ -13,7 +13,7 @@ import {
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { FormWrapper } from '@/components/forms/FormWrapper';
-import { FilterPanel, type FilterValues } from '@/components/forms/FilterPanel';
+import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -79,9 +79,9 @@ export function ClientsPage() {
   const { hasPermission } = usePermission();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<FilterValues>({ locationId: '' });
+  const [filters, setFilters] = useState<FilterValues>({ locationIds: [] });
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>({
-    locationId: '',
+    locationIds: [],
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(10);
@@ -99,10 +99,10 @@ export function ClientsPage() {
     page,
     limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
-    locationId:
-      typeof appliedFilters.locationId === 'string' && appliedFilters.locationId
-        ? appliedFilters.locationId
-        : undefined,
+    locationIds: (() => {
+      const ids = filterIds(appliedFilters.locationIds);
+      return ids.length ? ids : undefined;
+    })(),
     sortBy: sort.sortBy as ListClientsParams['sortBy'],
     sortOrder: sort.sortOrder,
   };
@@ -122,7 +122,7 @@ export function ClientsPage() {
 
   const exportParams = {
     search: search || undefined,
-    locationId: listParams.locationId,
+    locationIds: listParams.locationIds,
     sortBy: listParams.sortBy,
     sortOrder: listParams.sortOrder,
   };
@@ -168,6 +168,11 @@ export function ClientsPage() {
           {row.address ?? '—'}
         </span>
       ),
+    },
+    {
+      id: 'contactNumber',
+      header: 'Contact',
+      cell: (row) => row.contactNumber ?? '—',
     },
     {
       id: 'fundCode',
@@ -308,11 +313,12 @@ export function ClientsPage() {
       <FilterPanel
         fields={[
           {
-            key: 'locationId',
+            key: 'locationIds',
             label: 'Location',
-            type: 'select',
+            type: 'multiSelect',
             options: locationOptions,
             placeholder: 'All locations',
+            searchPlaceholder: 'Search locations…',
           },
         ]}
         values={filters}
@@ -322,8 +328,8 @@ export function ClientsPage() {
           setAppliedFilters(values);
         }}
         onReset={() => {
-          setFilters({ locationId: '' });
-          setAppliedFilters({ locationId: '' });
+          setFilters({ locationIds: [] });
+          setAppliedFilters({ locationIds: [] });
           setPage(1);
         }}
       />

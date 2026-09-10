@@ -5,6 +5,7 @@ import type {
   BulkGeneratePayload,
   Filing,
   ListFilingsParams,
+  SendFilingWhatsAppPayload,
   UpdateFilingOverridesPayload,
 } from '@/types/filing.types';
 import { getApiErrorMessage } from '@/utils/apiError';
@@ -141,3 +142,30 @@ export const useDownloadFilingMutation = () =>
       toastError(getApiErrorMessage(error, 'Could not download Form 5'));
     },
   });
+
+export const useSendFilingWhatsAppMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['filings', 'whatsapp'],
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload?: SendFilingWhatsAppPayload;
+    }) => filingsApi.sendWhatsApp(id, payload),
+    onSuccess: (result) => {
+      toastSuccess(`WhatsApp sent to ${result.phone}`);
+      void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
+      queryClient.setQueryData(
+        filingsQueryKeys.detail(result.filing.id),
+        result.filing,
+      );
+    },
+    onError: (error) => {
+      toastError(getApiErrorMessage(error, 'Could not send Form 5 on WhatsApp'));
+    },
+  });
+};

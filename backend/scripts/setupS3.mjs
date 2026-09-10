@@ -108,7 +108,7 @@ try {
   await probe();
   console.log('Put/delete probe succeeded. S3 is ready.');
   console.log(
-    'Set STORAGE_DRIVER=s3 in backend/.env (avatars/ + generated/ only) and restart the API.',
+    'Set STORAGE_DRIVER=s3 in backend/.env (documents/, generated/, avatars/; templates stay on disk) and restart the API.',
   );
 } catch (error) {
   const status = error?.$metadata?.httpStatusCode;

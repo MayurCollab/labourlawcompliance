@@ -47,7 +47,22 @@ const assertCodeAvailable = async (clientCode, excludeId = null) => {
   }
 };
 
-const buildClientListFilter = ({ search, locationId, fundCode }) => {
+const normalizeIdList = (...groups) => {
+  const ids = [];
+  for (const group of groups) {
+    if (!group) continue;
+    if (Array.isArray(group)) {
+      for (const item of group) {
+        if (item) ids.push(String(item));
+      }
+    } else {
+      ids.push(String(group));
+    }
+  }
+  return [...new Set(ids)];
+};
+
+const buildClientListFilter = ({ search, locationId, locationIds, fundCode }) => {
   const filter = {};
   if (search) {
     const regex = { $regex: escapeRegex(search), $options: 'i' };
@@ -58,7 +73,9 @@ const buildClientListFilter = ({ search, locationId, fundCode }) => {
       { fundCode: regex },
     ];
   }
-  if (locationId) filter.location = locationId;
+  const locations = normalizeIdList(locationIds, locationId);
+  if (locations.length === 1) filter.location = locations[0];
+  else if (locations.length > 1) filter.location = { $in: locations };
   if (fundCode) filter.fundCode = fundCode.trim();
   return filter;
 };

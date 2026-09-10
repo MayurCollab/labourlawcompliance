@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   FILINGS_CREATE: 'filings.create',
   FILINGS_EDIT: 'filings.edit',
   FILINGS_GENERATE: 'filings.generate',
+  FILINGS_SEND: 'filings.send',
   TEMPLATES_VIEW: 'templates.view',
   TEMPLATES_CREATE: 'templates.create',
   TEMPLATES_EDIT: 'templates.edit',

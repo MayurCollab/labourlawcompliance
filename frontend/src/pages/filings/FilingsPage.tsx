@@ -5,7 +5,7 @@ import { filingsApi } from '@/api/filings.api';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
-import { FilterPanel, type FilterValues } from '@/components/forms/FilterPanel';
+import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { Input } from '@/components/inputs/Input';
@@ -56,8 +56,8 @@ const previousMonth = () => {
 };
 
 const emptyFilters: FilterValues = {
-  locationId: '',
-  clientId: '',
+  locationIds: [],
+  clientIds: [],
   generateStatus: '',
 };
 
@@ -164,8 +164,8 @@ export function FilingsPage() {
           limit: 200,
           search: search || undefined,
           period,
-          locationId: locationId || undefined,
-          clientId: clientId || undefined,
+          locationIds: locationIds.length ? locationIds : undefined,
+          clientIds: clientIds.length ? clientIds : undefined,
           generateStatus: 'generated',
           sortBy: 'clientCode',
           sortOrder: 'asc',
@@ -191,12 +191,8 @@ export function FilingsPage() {
     }
   };
 
-  const locationId =
-    typeof appliedFilters.locationId === 'string'
-      ? appliedFilters.locationId
-      : '';
-  const clientId =
-    typeof appliedFilters.clientId === 'string' ? appliedFilters.clientId : '';
+  const locationIds = filterIds(appliedFilters.locationIds);
+  const clientIds = filterIds(appliedFilters.clientIds);
   const statusValue = appliedFilters.generateStatus;
   const generateStatus =
     statusValue === 'pending' ||
@@ -210,8 +206,8 @@ export function FilingsPage() {
     limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     period: period || undefined,
-    locationId: locationId || undefined,
-    clientId: clientId || undefined,
+    locationIds: locationIds.length ? locationIds : undefined,
+    clientIds: clientIds.length ? clientIds : undefined,
     generateStatus,
     sortBy: sort.sortBy as ListFilingsParams['sortBy'],
     sortOrder: sort.sortOrder,
@@ -434,18 +430,20 @@ export function FilingsPage() {
         title="Workspace filters"
         fields={[
           {
-            key: 'locationId',
+            key: 'locationIds',
             label: 'Location',
-            type: 'select',
+            type: 'multiSelect',
             options: locationOptions,
             placeholder: 'All locations',
+            searchPlaceholder: 'Search locations…',
           },
           {
-            key: 'clientId',
+            key: 'clientIds',
             label: 'Client',
-            type: 'select',
+            type: 'multiSelect',
             options: clientOptions,
             placeholder: 'All clients',
+            searchPlaceholder: 'Search clients…',
           },
           {
             key: 'generateStatus',
@@ -494,8 +492,8 @@ export function FilingsPage() {
             onClick={() =>
               startBulk({
                 period,
-                locationId: locationId || undefined,
-                clientId: clientId || undefined,
+                locationIds: locationIds.length ? locationIds : undefined,
+                clientIds: clientIds.length ? clientIds : undefined,
                 generateStatus,
                 search: search || undefined,
               })

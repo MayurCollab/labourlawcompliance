@@ -56,6 +56,7 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   FILING_GENERATE: 'filings.generate',
   FILING_BULK_GENERATE: 'filings.bulk_generate',
   FILING_OVERRIDES_UPDATE: 'filings.overrides_update',
+  FILING_WHATSAPP_SEND: 'filings.whatsapp_send',
 
   TEMPLATE_CREATE: 'templates.create',
   TEMPLATE_UPDATE: 'templates.update',

@@ -1,8 +1,10 @@
 import {
   Building2,
   FileSpreadsheet,
+  History,
   LayoutDashboard,
   LayoutTemplate,
+  MessageCircle,
   Scale,
   Shield,
   ShieldCheck,
@@ -55,6 +57,19 @@ export const APP_NAV_ITEMS: SidebarMenuItem[] = [
     to: PATHS.form5,
     label: 'Form 5',
     icon: FileSpreadsheet,
+    requiredPermission: PERMISSIONS.FILINGS_VIEW,
+    end: true,
+  },
+  {
+    to: PATHS.form5Whatsapp,
+    label: 'Form 5 WhatsApp',
+    icon: MessageCircle,
+    requiredPermission: PERMISSIONS.FILINGS_VIEW,
+  },
+  {
+    to: PATHS.whatsappSends,
+    label: 'WhatsApp sends',
+    icon: History,
     requiredPermission: PERMISSIONS.FILINGS_VIEW,
   },
   {

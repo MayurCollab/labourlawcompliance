@@ -86,6 +86,14 @@ const FilingsPage = lazyPage(
   () => import('@/pages/filings/FilingsPage'),
   'FilingsPage',
 );
+const Form5WhatsAppPage = lazyPage(
+  () => import('@/pages/filings/Form5WhatsAppPage'),
+  'Form5WhatsAppPage',
+);
+const WhatsAppSendsPage = lazyPage(
+  () => import('@/pages/whatsappSends/WhatsAppSendsPage'),
+  'WhatsAppSendsPage',
+);
 const TemplatesPage = lazyPage(
   () => import('@/pages/templates/TemplatesPage'),
   'TemplatesPage',
@@ -183,6 +191,14 @@ export const router = createBrowserRouter(
               }
             >
               <Route path={PATHS.form5} element={<FilingsPage />} />
+              <Route
+                path={PATHS.form5Whatsapp}
+                element={<Form5WhatsAppPage />}
+              />
+              <Route
+                path={PATHS.whatsappSends}
+                element={<WhatsAppSendsPage />}
+              />
             </Route>
 
             <Route

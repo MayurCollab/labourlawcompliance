@@ -8,6 +8,27 @@ export const objectIdSchema = z
   .string({ error: 'Id is required' })
   .regex(/^[0-9a-fA-F]{24}$/, 'Invalid id format');
 
+/**
+ * Accepts repeated query keys, a CSV string, or a single id.
+ * Returns undefined when empty.
+ */
+export const objectIdListSchema = z.preprocess((value) => {
+  if (value == null || value === '') return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => String(item).split(','))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return value;
+}, z.array(objectIdSchema).max(500).optional());
+
 export const idParamSchema = z.object({
   id: objectIdSchema,
 });

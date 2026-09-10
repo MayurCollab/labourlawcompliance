@@ -31,6 +31,7 @@ export type ListEmployeesParams = {
   search?: string;
   period?: string;
   clientId?: string;
+  clientIds?: string[];
   phyCode?: string;
   unmatched?: boolean;
   sortBy?:

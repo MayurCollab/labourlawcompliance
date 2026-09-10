@@ -20,6 +20,9 @@ const toQuery = (params: ListClientsParams) => {
   if (params.limit) query.limit = String(params.limit);
   if (params.search) query.search = params.search;
   if (params.locationId) query.locationId = params.locationId;
+  if (params.locationIds?.length) {
+    query.locationIds = params.locationIds.join(',');
+  }
   if (params.fundCode) query.fundCode = params.fundCode;
   if (params.sortBy) query.sortBy = params.sortBy;
   if (params.sortOrder) query.sortOrder = params.sortOrder;
@@ -69,7 +72,7 @@ export const clientsApi = {
   exportExcel: async (
     params: Pick<
       ListClientsParams,
-      'search' | 'locationId' | 'fundCode' | 'sortBy' | 'sortOrder'
+        'search' | 'locationId' | 'locationIds' | 'fundCode' | 'sortBy' | 'sortOrder'
     > = {},
   ): Promise<void> => {
     const response = await axiosInstance.get('/api/v1/clients/export', {

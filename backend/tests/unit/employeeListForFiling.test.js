@@ -72,14 +72,48 @@ describe('employeeListForFiling', () => {
     expect(normalizeLocationName(' Anand ')).toBe('anand');
   });
 
-  test('employeeMatchesClient by client id or phy code', () => {
+  test('employeeMatchesClient by client id or client code', () => {
     expect(employeeMatchesClient(employees[0], client)).toBe(true);
     expect(employeeMatchesClient(employees[3], client)).toBe(false);
+    expect(
+      employeeMatchesClient(
+        {
+          ...employees[0],
+          client: 'other-client',
+          clientCode: 'C0299',
+          phyCode: '0083',
+        },
+        client,
+      ),
+    ).toBe(false);
   });
 
-  test('filterEmployeesForClientLocation keeps client/PHY matches even at another city', () => {
+  test('filterEmployeesForClientLocation keeps client matches even at another city', () => {
     const filtered = filterEmployeesForClientLocation({
       employees,
+      client,
+      period: '2026-07',
+    });
+    expect(filtered.map((row) => row.employeeNo)).toEqual(['E1', 'E2', 'E3']);
+  });
+
+  test('filterEmployeesForClientLocation does not include other clients sharing PHY', () => {
+    const filtered = filterEmployeesForClientLocation({
+      employees: [
+        ...employees,
+        {
+          employeeNo: 'E99',
+          employeeName: 'Other client same PHY',
+          period: '2026-07',
+          client: 'client-299',
+          clientCode: 'C0299',
+          phyCode: '0083',
+          locationName: 'Anand',
+          ptGross: 15000,
+          pTax: 200,
+          unmatched: false,
+        },
+      ],
       client,
       period: '2026-07',
     });

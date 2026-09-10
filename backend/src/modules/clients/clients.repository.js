@@ -70,6 +70,12 @@ export const findClientForTemplateResolve = (id) =>
 export const findClientIdsByLocation = (locationId) =>
   Client.find({ location: locationId }).distinct('_id');
 
+export const findClientIdsByLocations = (locationIds) => {
+  const ids = [...new Set((locationIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return Promise.resolve([]);
+  return Client.find({ location: { $in: ids } }).distinct('_id');
+};
+
 export const findClientsByTemplate = (templateId) =>
   Client.find({ template: templateId }).select('clientCode companyName');
 

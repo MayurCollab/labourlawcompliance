@@ -21,7 +21,7 @@ const start = async () => {
   const server = app.listen(config.port, config.host, () => {
     const storageNote =
       config.storage.driver === 's3'
-        ? `s3 bucket ${config.storage.s3.bucket} (avatars, generated) + local disk`
+        ? `s3 bucket ${config.storage.s3.bucket} (documents, generated, avatars; templates on disk)`
         : config.storage.driver === 's3-all'
           ? `s3 bucket ${config.storage.s3.bucket} (all folders)`
           : 'local disk';

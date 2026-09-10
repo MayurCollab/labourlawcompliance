@@ -119,6 +119,7 @@ export const toFilingDto = (filing, extras = {}) => ({
         includeEmployeesOnForm5: filing.client.includeEmployeesOnForm5 !== false,
         address: filing.client.address ?? null,
         signatoryName: filing.client.signatoryName ?? null,
+        contactNumber: filing.client.contactNumber ?? null,
       }
     : null,
   clientCode: filing.clientCode,

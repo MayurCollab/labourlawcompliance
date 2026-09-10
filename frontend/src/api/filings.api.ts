@@ -6,6 +6,8 @@ import type {
   Filing,
   ListFilingsParams,
   ListFilingsResult,
+  SendFilingWhatsAppPayload,
+  SendFilingWhatsAppResult,
   UpdateFilingOverridesPayload,
 } from '@/types/filing.types';
 import axiosInstance from '@/api/axiosInstance';
@@ -25,7 +27,11 @@ const toQuery = (params: ListFilingsParams) => {
   if (params.search) query.search = params.search;
   if (params.period) query.period = params.period;
   if (params.locationId) query.locationId = params.locationId;
+  if (params.locationIds?.length) {
+    query.locationIds = params.locationIds.join(',');
+  }
   if (params.clientId) query.clientId = params.clientId;
+  if (params.clientIds?.length) query.clientIds = params.clientIds.join(',');
   if (params.generateStatus) query.generateStatus = params.generateStatus;
   if (params.sortBy) query.sortBy = params.sortBy;
   if (params.sortOrder) query.sortOrder = params.sortOrder;
@@ -209,5 +215,15 @@ export const filingsApi = {
     );
     const filename = await filenameForDownloadBlob(blob, headerName);
     return { blob, filename };
+  },
+
+  sendWhatsApp: async (
+    id: string,
+    payload: SendFilingWhatsAppPayload = {},
+  ): Promise<SendFilingWhatsAppResult> => {
+    const { data } = await axiosInstance.post<
+      ApiSuccessResponse<SendFilingWhatsAppResult>
+    >(`/api/v1/filings/${id}/whatsapp`, payload);
+    return data.data;
   },
 };

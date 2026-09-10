@@ -13,6 +13,7 @@ import settingsRoutes from '../modules/settings/settings.routes.js';
 import templatesRoutes from '../modules/templates/templates.routes.js';
 import uploadsRoutes from '../modules/uploads/uploads.routes.js';
 import usersRoutes from '../modules/users/users.routes.js';
+import whatsappSendsRoutes from '../modules/whatsappSends/whatsappSends.routes.js';
 import healthRoutes from './health.routes.js';
 
 /**
@@ -37,5 +38,6 @@ v1Router.use('/uploads', uploadsRoutes);
 v1Router.use('/templates', templatesRoutes);
 v1Router.use('/employees', employeesRoutes);
 v1Router.use('/filings', filingsRoutes);
+v1Router.use('/whatsapp-sends', whatsappSendsRoutes);
 
 export default v1Router;

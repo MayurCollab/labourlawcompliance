@@ -2,10 +2,11 @@ import * as localStorage from './local.storage.js';
 import * as s3Storage from './s3.storage.js';
 
 /**
- * Selective S3 routing — only these folders go to the bucket; everything
- * else (documents, templates, …) stays on local disk.
+ * Selective S3 routing — user Excel/PDF/docs and avatars go to the bucket.
+ * Form 5 templates stay on local disk (bundled assets + uploads/templates).
  */
-export const S3_FOLDERS = Object.freeze(['avatars', 'generated']);
+export const S3_FOLDERS = Object.freeze(['avatars', 'documents', 'generated']);
+export const LOCAL_FOLDERS = Object.freeze(['templates']);
 
 const S3_FOLDER_SET = new Set(S3_FOLDERS);
 
@@ -19,7 +20,7 @@ const usesS3Folder = (folder) => S3_FOLDER_SET.has(normalizeFolder(folder));
 const usesS3Path = (publicPath) => {
   if (!publicPath) return false;
 
-  // Full S3 object URL stored in MongoDB (generated / avatars).
+  // Full S3 object URL stored in MongoDB.
   if (s3Storage.isOurS3ObjectUrl(publicPath)) return true;
 
   if (!publicPath.startsWith('/uploads/')) return false;

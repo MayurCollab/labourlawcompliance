@@ -1,4 +1,3 @@
-import { normalizePhyCode } from '../uploads/masterParse.js';
 import { resolvePTax } from './ptCompute.js';
 
 export const normalizeLocationName = (value) =>
@@ -36,17 +35,13 @@ export const employeeMatchesClient = (employee, client) => {
   const clientCode = String(client?.clientCode ?? '')
     .trim()
     .toUpperCase();
-  if (employeeCode && clientCode && employeeCode === clientCode) return true;
-
-  const clientPhy = normalizePhyCode(client?.phyCode);
-  const employeePhy = normalizePhyCode(employee?.phyCode);
-  return Boolean(clientPhy && employeePhy && clientPhy === employeePhy);
+  return Boolean(employeeCode && clientCode && employeeCode === clientCode);
 };
 
 /**
  * Raw employee rows for PT compute and the Form 5 list.
- * Match by client id, client code, or PHY_CODE — not employee LOCATION
- * (branch city on the salary sheet can differ from the client's filing place).
+ * Match by client id or client code only — not PHY_CODE (shared across
+ * clients) and not employee LOCATION (branch city can differ from filing place).
  */
 export const filterEmployeesForClientLocation = ({
   employees = [],

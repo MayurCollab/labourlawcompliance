@@ -2,18 +2,23 @@ import AppError from '../../utils/AppError.js';
 import storage from '../../storage/index.js';
 import { sanitizeUserHtml } from '../../utils/sanitize.js';
 import {
+  ensurePdfFilename,
+  normalizeWhatsAppPhone,
+} from '../../integrations/msg91/phone.js';
+import { sendForm5WhatsAppTemplate } from '../../integrations/msg91/whatsapp.js';
+import {
   ACTIVITY_ACTIONS,
   ENTITY_TYPES,
 } from '../activity/activity.constants.js';
 import { recordActivity } from '../activity/activity.service.js';
 import * as clientsRepository from '../clients/clients.repository.js';
+import * as clientsService from '../clients/clients.service.js';
 import * as employeesRepository from '../employees/employees.repository.js';
 import * as settingsService from '../settings/settings.service.js';
 import {
   fillTemplateBuffer,
 } from '../templates/templateFill.js';
 import {
-  normalizePhyCode,
   parseAmount,
   parseExcelDate,
   stringifyCell,
@@ -23,6 +28,8 @@ import {
   rememberFiling,
 } from '../uploads/importCache.js';
 import * as ptSlabsService from '../ptSlabs/ptSlabs.service.js';
+import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
+import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
 import { FILINGS_CODES, GENERATE_STATUSES } from './filings.constants.js';
 import { toFilingDto, toFilingListDto } from './filings.dto.js';
 import * as filingsRepository from './filings.repository.js';
@@ -90,8 +97,25 @@ const slabEmployeeCounts = (result) => ({
   ),
 });
 
+const normalizeIdList = (...groups) => {
+  const ids = [];
+  for (const group of groups) {
+    if (!group) continue;
+    if (Array.isArray(group)) {
+      for (const item of group) {
+        if (item) ids.push(String(item));
+      }
+    } else {
+      ids.push(String(group));
+    }
+  }
+  return [...new Set(ids)];
+};
+
 const buildListFilter = async (query) => {
-  const { search, period, generateStatus, locationId, clientId } = query;
+  const { search, period, generateStatus } = query;
+  const locationIds = normalizeIdList(query.locationIds, query.locationId);
+  const clientIds = normalizeIdList(query.clientIds, query.clientId);
   const filter = {};
   if (search) {
     const regex = { $regex: escapeRegex(search), $options: 'i' };
@@ -100,18 +124,17 @@ const buildListFilter = async (query) => {
   if (period) filter.period = period;
   if (generateStatus) filter.generateStatus = generateStatus;
 
-  if (clientId && locationId) {
-    const client = await clientsRepository.findClientById(clientId);
-    const loc = client?.location?.id || client?.location;
-    if (!client || String(loc) !== String(locationId)) {
-      filter.client = { $in: [] };
-      return filter;
-    }
-    filter.client = clientId;
-  } else if (clientId) {
-    filter.client = clientId;
-  } else if (locationId) {
-    const ids = await clientsRepository.findClientIdsByLocation(locationId);
+  if (clientIds.length && locationIds.length) {
+    const inLocations =
+      await clientsRepository.findClientIdsByLocations(locationIds);
+    const allowed = new Set(inLocations.map(String));
+    filter.client = {
+      $in: clientIds.filter((id) => allowed.has(String(id))),
+    };
+  } else if (clientIds.length) {
+    filter.client = { $in: clientIds };
+  } else if (locationIds.length) {
+    const ids = await clientsRepository.findClientIdsByLocations(locationIds);
     filter.client = { $in: ids };
   }
 
@@ -397,14 +420,13 @@ const findFilingOrFail = async (id) => {
 };
 
 const employeesFilterForClient = (client, period) => {
+  // Scope by client ownership only. PHY_CODE is a branch tag that can be
+  // shared across clients on salary sheets (e.g. C0030 vs C0299 both 0654),
+  // so matching on PHY alone leaks another client's employees into Form-5.
   const filter = { period };
-  const phyCode = normalizePhyCode(client?.phyCode);
   const or = [{ client: client.id }];
   if (client?.clientCode) {
     or.push({ clientCode: client.clientCode });
-  }
-  if (phyCode) {
-    or.push({ phyCode });
   }
   filter.$or = or;
   return filter;
@@ -916,5 +938,165 @@ export const downloadGenerated = async (id, version) => {
     buffer,
     filename: file.filename,
     mimetype: file.mimetype,
+  };
+};
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const periodMonthAndYear = (period) => {
+  const match = String(period ?? '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return { monthName: '', year: '' };
+  const month = Number(match[2]);
+  return {
+    monthName: MONTH_NAMES[month - 1] || match[2],
+    year: match[1],
+  };
+};
+
+const clientRefId = (client) => {
+  if (!client) return null;
+  if (typeof client === 'object') {
+    return client.id || (client._id ? String(client._id) : null);
+  }
+  return String(client);
+};
+
+/**
+ * Send the latest generated Form 5 PDF on WhatsApp via MSG91.
+ * Uses the public S3 object URL stored on generatedFile.storedPath.
+ */
+export const sendFilingWhatsApp = async (id, body, actorId) => {
+  const filing = await findFilingOrFail(id);
+
+  if (
+    filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
+    !filing.generatedFile?.storedPath
+  ) {
+    throw new AppError(
+      'Generate the Form 5 PDF before sending on WhatsApp.',
+      400,
+      { code: FILINGS_CODES.WHATSAPP_NOT_GENERATED },
+    );
+  }
+
+  const mediaUrl = String(filing.generatedFile.storedPath || '').trim();
+  if (!/^https?:\/\//i.test(mediaUrl)) {
+    throw new AppError(
+      'Generated file has no public S3 URL. Use S3 storage for WhatsApp send.',
+      400,
+      { code: FILINGS_CODES.WHATSAPP_MEDIA_URL_MISSING },
+    );
+  }
+
+  const rawPhone =
+    body?.phone !== undefined && body?.phone !== null && String(body.phone).trim()
+      ? String(body.phone).trim()
+      : filing.client?.contactNumber;
+
+  if (!rawPhone) {
+    throw new AppError(
+      'Add a mobile number for this client before sending on WhatsApp.',
+      400,
+      { code: FILINGS_CODES.WHATSAPP_PHONE_REQUIRED },
+    );
+  }
+
+  const phone = normalizeWhatsAppPhone(rawPhone);
+  if (!phone) {
+    throw new AppError('Mobile number is invalid.', 400, {
+      code: FILINGS_CODES.WHATSAPP_PHONE_INVALID,
+    });
+  }
+
+  const clientId = clientRefId(filing.client);
+  const shouldSavePhone = body?.savePhone !== false;
+  if (shouldSavePhone && clientId && body?.phone !== undefined) {
+    await clientsService.updateClient(
+      clientId,
+      { contactNumber: String(body.phone).trim() || null },
+      actorId,
+    );
+  }
+
+  const { monthName, year } = periodMonthAndYear(filing.period);
+  const companyName =
+    filing.client?.companyName || filing.clientCode || 'Client';
+  const filename = ensurePdfFilename(filing.generatedFile.filename);
+
+  const sendLedgerBase = {
+    filingId: filing.id,
+    clientId,
+    clientCode: filing.clientCode,
+    companyName:
+      filing.client?.companyName || filing.clientCode || null,
+    phone,
+    period: filing.period,
+    periodLabel: filing.periodLabel || null,
+    filename,
+    mediaUrl,
+    actorId,
+  };
+
+  let msg91Response;
+  try {
+    msg91Response = await sendForm5WhatsAppTemplate({
+      phone,
+      filename,
+      mediaUrl,
+      companyName,
+      monthName,
+      year,
+    });
+  } catch (error) {
+    await recordWhatsAppSend({
+      ...sendLedgerBase,
+      status: WHATSAPP_SEND_STATUSES.FAILED,
+      errorMessage: error?.message || 'WhatsApp send failed',
+      failedAt: new Date(),
+    });
+    throw error;
+  }
+
+  filing.sentDate = new Date();
+  filing.mailStatus = 'WhatsApp sent';
+  filing.updatedBy = actorId;
+  await filingsRepository.saveFiling(filing);
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.FILING_WHATSAPP_SEND,
+    entityType: ENTITY_TYPES.FILING,
+    entityId: filing.id,
+    changes: {
+      phone,
+      filename,
+      period: filing.period,
+      clientCode: filing.clientCode,
+    },
+  });
+
+  await recordWhatsAppSend({
+    ...sendLedgerBase,
+    status: WHATSAPP_SEND_STATUSES.ACCEPTED,
+    providerResponse: msg91Response,
+    sentAt: filing.sentDate,
+  });
+
+  return {
+    filing: await toFilingDtoWithHint(await findFilingOrFail(id)),
+    phone,
+    msg91: msg91Response,
   };
 };
