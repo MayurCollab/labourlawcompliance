@@ -3,6 +3,19 @@ import AppError from '../../utils/AppError.js';
 import logger from '../../utils/logger.js';
 
 /**
+ * Wrap a template variable so WhatsApp renders it bold (*value*).
+ * Empty values stay empty so MSG91 does not receive a lone "**".
+ */
+export const toWhatsAppBold = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (text.startsWith('*') && text.endsWith('*') && text.length >= 2) {
+    return text;
+  }
+  return `*${text}*`;
+};
+
+/**
  * Send a WhatsApp template message with a document header via MSG91 bulk API.
  *
  * @param {{
@@ -61,15 +74,15 @@ export const sendForm5WhatsAppTemplate = async ({
               },
               body_1: {
                 type: 'text',
-                value: recipientName || '',
+                value: toWhatsAppBold(recipientName),
               },
               body_2: {
                 type: 'text',
-                value: monthName || '',
+                value: toWhatsAppBold(monthName),
               },
               body_3: {
                 type: 'text',
-                value: year || '',
+                value: toWhatsAppBold(year),
               },
             },
           },
