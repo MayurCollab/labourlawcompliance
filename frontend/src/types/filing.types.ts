@@ -85,6 +85,10 @@ export type Filing = {
   status: string | null;
   taskNo: string | null;
   ptAmount: number | null;
+  salaryPtTotal?: number | null;
+  salaryEmployeeCount?: number;
+  ptMismatch?: boolean;
+  ptMismatchDelta?: number | null;
   chequeNo: string | null;
   sentDate: string | null;
   challanNo: string | null;
@@ -130,6 +134,8 @@ export type ListFilingsParams = {
   clientId?: string;
   clientIds?: string[];
   generateStatus?: 'pending' | 'generated' | 'failed';
+  /** Clients from the last imported MasterSheet. */
+  recentlyAdded?: boolean;
   sortBy?: 'period' | 'clientCode' | 'createdAt' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';
 };
@@ -144,6 +150,16 @@ export type ListFilingsResult = {
   };
 };
 
+export type FilingPtMismatch = {
+  id: string;
+  clientCode: string;
+  companyName: string | null;
+  ptAmount: number | null;
+  salaryPtTotal: number | null;
+  salaryEmployeeCount: number;
+  ptMismatchDelta: number | null;
+};
+
 export type BulkGeneratePayload = {
   ids?: string[];
   period?: string;
@@ -153,6 +169,7 @@ export type BulkGeneratePayload = {
   clientIds?: string[];
   generateStatus?: 'pending' | 'generated' | 'failed';
   search?: string;
+  recentlyAdded?: boolean;
 };
 
 export type SendFilingWhatsAppPayload = {

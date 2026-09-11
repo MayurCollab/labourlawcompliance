@@ -4,6 +4,8 @@ import {
   useRef,
   type ChangeEvent,
   type InputHTMLAttributes,
+  type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
 import { FileIcon, Upload, X } from 'lucide-react';
@@ -60,6 +62,23 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(
       onChange?.(event.target.files);
     };
 
+    const openPicker = () => {
+      if (!disabled) inputRef.current?.click();
+    };
+
+    const onZoneClick = (event: MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-file-upload-remove]')) return;
+      openPicker();
+    };
+
+    const onZoneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openPicker();
+      }
+    };
+
     const clear = () => {
       if (inputRef.current) {
         inputRef.current.value = '';
@@ -76,9 +95,17 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(
         ) : null}
 
         <div
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-label={typeof label === 'string' ? label : 'Choose a file'}
+          aria-disabled={disabled || undefined}
+          onClick={onZoneClick}
+          onKeyDown={onZoneKeyDown}
           className={cn(
-            'flex flex-col gap-3 rounded-lg border border-dashed border-input bg-muted/30 p-4',
-            disabled && 'opacity-50',
+            'flex cursor-pointer flex-col gap-3 rounded-lg border border-dashed border-input bg-muted/30 p-4 transition-colors',
+            'hover:border-primary/40 hover:bg-muted/50',
+            'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+            disabled && 'pointer-events-none cursor-not-allowed opacity-50',
             className,
           )}
         >
@@ -92,13 +119,7 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(
                 {accept ? `Accepted: ${accept}` : 'Any file type'}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              onClick={() => inputRef.current?.click()}
-            >
+            <Button type="button" variant="outline" size="sm" disabled={disabled}>
               Browse
             </Button>
           </div>
@@ -134,8 +155,13 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(
                     type="button"
                     variant="ghost"
                     size="icon-xs"
+                    data-file-upload-remove=""
                     aria-label={`Remove ${file.name}`}
-                    onClick={clear}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      clear();
+                    }}
                   >
                     <X className="size-3.5" />
                   </Button>

@@ -1,4 +1,5 @@
 import Upload from './upload.model.js';
+import { UPLOAD_KINDS, UPLOAD_STATUSES } from './uploads.constants.js';
 
 export const createUpload = (data) => Upload.create(data);
 
@@ -15,3 +16,10 @@ export const findUploadByIdWithPath = (id) =>
 
 export const saveUpload = (upload, session = null) =>
   upload.save(session ? { session } : {});
+
+/** Most recent successfully imported MasterSheet (clients + filings). */
+export const findLatestImportedMaster = () =>
+  Upload.findOne({
+    kind: UPLOAD_KINDS.MASTER,
+    status: UPLOAD_STATUSES.IMPORTED,
+  }).sort({ updatedAt: -1, createdAt: -1 });

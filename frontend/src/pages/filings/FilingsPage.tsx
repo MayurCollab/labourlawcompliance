@@ -8,10 +8,12 @@ import { PermissionGate } from '@/components/common/PermissionGate';
 import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Checkbox } from '@/components/inputs/Checkbox';
+import { confirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
@@ -33,6 +35,7 @@ import type {
   ListFilingsParams,
 } from '@/types/filing.types';
 import { getApiErrorMessage } from '@/utils/apiError';
+import { ptMismatchConfirmMessage } from '@/utils/ptMismatch';
 import {
   canPickDownloadFolder,
   downloadFilesToFolder,
@@ -59,6 +62,7 @@ const emptyFilters: FilterValues = {
   locationIds: [],
   clientIds: [],
   generateStatus: '',
+  recentlyAdded: '',
 };
 
 /**
@@ -73,7 +77,9 @@ export function FilingsPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<FilterValues>(emptyFilters);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(50);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(
+    DEFAULT_DATA_TABLE_PAGE_SIZE,
+  );
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'clientCode',
     sortOrder: 'asc',
@@ -96,8 +102,26 @@ export function FilingsPage() {
     setBulkOpen(true);
   };
 
-  const downloadableFromRows = (list: Filing[]) =>
-    list.filter((row) => Boolean(row.generatedFile?.filename));
+  const requestBulk = async (payload: BulkGeneratePayload) => {
+    try {
+      const mismatches = await filingsApi.listPtMismatches(payload);
+      if (mismatches.length > 0) {
+        const confirmed = await confirmDialog({
+          title: 'P.Tax amount does not match salary',
+          message: ptMismatchConfirmMessage(mismatches),
+          confirmLabel: 'Generate anyway',
+          cancelLabel: 'Cancel',
+        });
+        if (!confirmed) return;
+      }
+    } catch (err) {
+      toastError(
+        getApiErrorMessage(err, 'Could not check P.Tax against salary totals'),
+      );
+      return;
+    }
+    startBulk(payload);
+  };
 
   const runMultiDownload = async (
     items: { id: string; filename: string }[],
@@ -133,21 +157,6 @@ export function FilingsPage() {
     }
   };
 
-  const downloadSelectedGenerated = async () => {
-    setBulkDownloading(true);
-    try {
-      await runMultiDownload(
-        selectedDownloadable.map((row) => ({
-          id: row.id,
-          filename:
-            row.generatedFile?.filename || `${row.clientCode}_Form5.pdf`,
-        })),
-      );
-    } finally {
-      setBulkDownloading(false);
-    }
-  };
-
   const downloadAllGeneratedForFilters = async () => {
     if (!period) {
       toastError('Pick a month first');
@@ -167,6 +176,7 @@ export function FilingsPage() {
           locationIds: locationIds.length ? locationIds : undefined,
           clientIds: clientIds.length ? clientIds : undefined,
           generateStatus: 'generated',
+          recentlyAdded: recentlyAdded || undefined,
           sortBy: 'clientCode',
           sortOrder: 'asc',
         });
@@ -193,6 +203,7 @@ export function FilingsPage() {
 
   const locationIds = filterIds(appliedFilters.locationIds);
   const clientIds = filterIds(appliedFilters.clientIds);
+  const recentlyAdded = appliedFilters.recentlyAdded === 'lastSheet';
   const statusValue = appliedFilters.generateStatus;
   const generateStatus =
     statusValue === 'pending' ||
@@ -209,16 +220,14 @@ export function FilingsPage() {
     locationIds: locationIds.length ? locationIds : undefined,
     clientIds: clientIds.length ? clientIds : undefined,
     generateStatus,
+    recentlyAdded: recentlyAdded || undefined,
     sortBy: sort.sortBy as ListFilingsParams['sortBy'],
     sortOrder: sort.sortOrder,
   };
 
   const filingsQuery = useFilingsQuery(params);
   const rows = filingsQuery.data?.filings ?? [];
-  const selectedDownloadable = useMemo(
-    () => downloadableFromRows(rows.filter((row) => selectedIds.has(row.id))),
-    [rows, selectedIds],
-  );
+  const mismatchCount = rows.filter((row) => row.ptMismatch).length;
   const pageIds = rows.map((row) => row.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
@@ -304,7 +313,23 @@ export function FilingsPage() {
       {
         id: 'ptAmount',
         header: 'P.Tax',
-        cell: (row) => formatAmount(row.ptAmount),
+        cell: (row) => (
+          <div className="flex flex-col gap-1">
+            <span>{formatAmount(row.ptAmount)}</span>
+            {row.ptMismatch ? (
+              <Badge
+                variant="warning"
+                title={
+                  row.salaryPtTotal == null
+                    ? undefined
+                    : `Salary total ₹${row.salaryPtTotal.toLocaleString('en-IN')}`
+                }
+              >
+                Salary {formatAmount(row.salaryPtTotal)}
+              </Badge>
+            ) : null}
+          </div>
+        ),
       },
       {
         id: 'challanNo',
@@ -470,6 +495,26 @@ export function FilingsPage() {
           setPage(1);
           setSelectedIds(new Set());
         }}
+        headerActions={
+          <Button
+            type="button"
+            size="sm"
+            variant={recentlyAdded ? 'primary' : 'outline'}
+            aria-pressed={recentlyAdded}
+            onClick={() => {
+              const next = {
+                ...filters,
+                recentlyAdded: recentlyAdded ? '' : 'lastSheet',
+              };
+              setFilters(next);
+              setAppliedFilters(next);
+              setPage(1);
+              setSelectedIds(new Set());
+            }}
+          >
+            Recently added
+          </Button>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -481,7 +526,7 @@ export function FilingsPage() {
           <Button
             type="button"
             disabled={selectedIds.size === 0 || busy}
-            onClick={() => startBulk({ ids: [...selectedIds] })}
+            onClick={() => void requestBulk({ ids: [...selectedIds] })}
           >
             Generate selected
           </Button>
@@ -490,12 +535,13 @@ export function FilingsPage() {
             variant="outline"
             disabled={!period || matchingTotal === 0 || busy}
             onClick={() =>
-              startBulk({
+              void requestBulk({
                 period,
                 locationIds: locationIds.length ? locationIds : undefined,
                 clientIds: clientIds.length ? clientIds : undefined,
                 generateStatus,
                 search: search || undefined,
+                recentlyAdded: recentlyAdded || undefined,
               })
             }
           >
@@ -503,17 +549,6 @@ export function FilingsPage() {
           </Button>
         </PermissionGate>
         <PermissionGate permission={PERMISSIONS.FILINGS_VIEW}>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={selectedDownloadable.length === 0 || busy}
-            loading={bulkDownloading}
-            onClick={() => void downloadSelectedGenerated()}
-          >
-            {canPickDownloadFolder()
-              ? `Choose folder (${selectedDownloadable.length})`
-              : `Download ZIP (${selectedDownloadable.length})`}
-          </Button>
           <Button
             type="button"
             variant="outline"
@@ -526,6 +561,17 @@ export function FilingsPage() {
           </Button>
         </PermissionGate>
       </div>
+
+      {mismatchCount > 0 ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          {mismatchCount} client{mismatchCount === 1 ? '' : 's'} on this page
+          have a P.Tax mismatch between the master sheet and salary employees.
+          You will be asked to confirm before generating Form 5.
+        </div>
+      ) : null}
 
       <DataTable
         columns={columns}

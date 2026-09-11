@@ -15,6 +15,7 @@ import * as clientsRepository from '../clients/clients.repository.js';
 import * as clientsService from '../clients/clients.service.js';
 import * as employeesRepository from '../employees/employees.repository.js';
 import * as settingsService from '../settings/settings.service.js';
+import * as uploadsRepository from '../uploads/uploads.repository.js';
 import {
   fillTemplateBuffer,
 } from '../templates/templateFill.js';
@@ -32,6 +33,7 @@ import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants
 import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
 import { FILINGS_CODES, GENERATE_STATUSES } from './filings.constants.js';
 import { toFilingDto, toFilingListDto } from './filings.dto.js';
+import { buildPtMismatch, toPtMismatchDto } from './ptMismatch.js';
 import * as filingsRepository from './filings.repository.js';
 import {
   buildComputationFromMaster,
@@ -112,17 +114,54 @@ const normalizeIdList = (...groups) => {
   return [...new Set(ids)];
 };
 
+const lastImportedMasterClientCodes = async () => {
+  const upload = await uploadsRepository.findLatestImportedMaster();
+  if (!upload) return [];
+
+  const report = upload.report || {};
+  const fromSheet = Array.isArray(report.clientCodes)
+    ? report.clientCodes.filter(Boolean)
+    : [];
+  if (fromSheet.length) return [...new Set(fromSheet)];
+
+  // Older imports did not store codes; approximate with filings touched
+  // in the same window as the import.
+  const importedAt = upload.updatedAt || upload.createdAt;
+  if (!importedAt) return [];
+  const start = new Date(new Date(importedAt).getTime() - 5_000);
+  const end = new Date(new Date(importedAt).getTime() + 5 * 60 * 1000);
+  const docs = await filingsRepository.findFilingIds(
+    { updatedAt: { $gte: start, $lte: end } },
+    { sort: { clientCode: 1 }, limit: 10_000 },
+  );
+  return [...new Set(docs.map((doc) => doc.clientCode).filter(Boolean))];
+};
+
 const buildListFilter = async (query) => {
   const { search, period, generateStatus } = query;
   const locationIds = normalizeIdList(query.locationIds, query.locationId);
   const clientIds = normalizeIdList(query.clientIds, query.clientId);
   const filter = {};
-  if (search) {
+  if (period) filter.period = period;
+  if (generateStatus) filter.generateStatus = generateStatus;
+
+  if (query.recentlyAdded) {
+    const codes = await lastImportedMasterClientCodes();
+    if (!codes.length) {
+      filter._id = { $in: [] };
+    } else if (search) {
+      filter.clientCode = {
+        $in: codes,
+        $regex: escapeRegex(search),
+        $options: 'i',
+      };
+    } else {
+      filter.clientCode = { $in: codes };
+    }
+  } else if (search) {
     const regex = { $regex: escapeRegex(search), $options: 'i' };
     filter.$or = [{ clientCode: regex }];
   }
-  if (period) filter.period = period;
-  if (generateStatus) filter.generateStatus = generateStatus;
 
   if (clientIds.length && locationIds.length) {
     const inLocations =
@@ -141,6 +180,89 @@ const buildListFilter = async (query) => {
   return filter;
 };
 
+const filingClientId = (filing) => {
+  const client = filing.client;
+  if (!client) return null;
+  if (typeof client === 'object') {
+    return String(client.id || client._id || '');
+  }
+  return String(client);
+};
+
+const salaryTotalsForFilings = async (filings) => {
+  const totals = new Map();
+  if (!filings.length) return totals;
+
+  const rows = await employeesRepository.aggregatePTaxByClientPeriod({
+    periods: filings.map((filing) => filing.period),
+    clientIds: filings.map(filingClientId),
+    clientCodes: filings.map((filing) => filing.clientCode),
+  });
+
+  const byClientId = new Map();
+  const byClientCode = new Map();
+  for (const row of rows) {
+    const period = row._id?.period;
+    const amount = Number(row.salaryPtTotal) || 0;
+    const count = Number(row.employeeCount) || 0;
+    if (row._id?.client) {
+      const key = `${period}|${String(row._id.client)}`;
+      const prev = byClientId.get(key) || { salaryPtTotal: 0, employeeCount: 0 };
+      byClientId.set(key, {
+        salaryPtTotal: prev.salaryPtTotal + amount,
+        employeeCount: prev.employeeCount + count,
+      });
+    } else if (row._id?.clientCode) {
+      const key = `${period}|${String(row._id.clientCode).trim().toUpperCase()}`;
+      const prev = byClientCode.get(key) || {
+        salaryPtTotal: 0,
+        employeeCount: 0,
+      };
+      byClientCode.set(key, {
+        salaryPtTotal: prev.salaryPtTotal + amount,
+        employeeCount: prev.employeeCount + count,
+      });
+    }
+  }
+
+  for (const filing of filings) {
+    const clientId = filingClientId(filing);
+    const fromId = clientId
+      ? byClientId.get(`${filing.period}|${clientId}`)
+      : null;
+    const fromCode = filing.clientCode
+      ? byClientCode.get(
+          `${filing.period}|${String(filing.clientCode).trim().toUpperCase()}`,
+        )
+      : null;
+    const employeeCount =
+      (fromId?.employeeCount || 0) + (fromCode?.employeeCount || 0);
+    totals.set(String(filing.id || filing._id), {
+      salaryPtTotal: employeeCount
+        ? (fromId?.salaryPtTotal || 0) + (fromCode?.salaryPtTotal || 0)
+        : null,
+      employeeCount,
+    });
+  }
+
+  return totals;
+};
+
+const withPtMismatch = (dto, filing, totalsById) => {
+  const total = totalsById.get(String(filing.id || filing._id)) || {
+    salaryPtTotal: null,
+    employeeCount: 0,
+  };
+  return {
+    ...dto,
+    ...buildPtMismatch({
+      ptAmount: filing.ptAmount,
+      salaryPtTotal: total.salaryPtTotal,
+      employeeCount: total.employeeCount,
+    }),
+  };
+};
+
 export const listFilings = async (query) => {
   const { page, limit, sortBy, sortOrder } = query;
   const filter = await buildListFilter(query);
@@ -153,9 +275,12 @@ export const listFilings = async (query) => {
     filingsRepository.countFilings(filter),
     templatesRepository.findGlobalDefault(),
   ]);
+  const salaryTotals = await salaryTotalsForFilings(filings);
 
   return {
-    filings: toFilingListDto(filings, { globalDefault }),
+    filings: toFilingListDto(filings, { globalDefault }).map((dto, index) =>
+      withPtMismatch(dto, filings[index], salaryTotals),
+    ),
     pagination: {
       page,
       limit,
@@ -163,6 +288,25 @@ export const listFilings = async (query) => {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     },
   };
+};
+
+export const listPtMismatches = async (query) => {
+  const filter =
+    query.ids && query.ids.length
+      ? { _id: { $in: query.ids } }
+      : await buildListFilter(query);
+  const filings = await filingsRepository.findFilings(filter, {
+    sort: { clientCode: 1 },
+    skip: 0,
+    limit: 10000,
+  });
+  const salaryTotals = await salaryTotalsForFilings(filings);
+  const mismatches = toFilingListDto(filings)
+    .map((dto, index) => withPtMismatch(dto, filings[index], salaryTotals))
+    .map(toPtMismatchDto)
+    .filter(Boolean);
+
+  return { mismatches };
 };
 
 const MONTHLY_FIELDS = [
@@ -437,7 +581,20 @@ export const getFiling = async (id) => {
   const employeePreview = filing.client
     ? await buildEmployeePreview(filing.client, filing.period)
     : null;
-  return toFilingDtoWithHint(filing, { employeePreview });
+  const salaryPtTotal = employeePreview
+    ? employeePreview.employees.reduce(
+        (sum, row) => sum + (Number(row.pTax) || 0),
+        0,
+      )
+    : null;
+  return toFilingDtoWithHint(filing, {
+    employeePreview,
+    ...buildPtMismatch({
+      ptAmount: filing.ptAmount,
+      salaryPtTotal,
+      employeeCount: employeePreview?.totalEmployeeCount ?? 0,
+    }),
+  });
 };
 
 /**

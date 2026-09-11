@@ -119,6 +119,10 @@ const config = Object.freeze({
     apiUrl:
       process.env.MSG91_WHATSAPP_API_URL ||
       'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+    /** Official WhatsApp logs API (GET, max 3-day range). */
+    logsApiUrl:
+      process.env.MSG91_WHATSAPP_LOGS_URL ||
+      'https://control.msg91.com/api/v5/report/logs/wa',
     /** Optional shared secret for POST /whatsapp-sends/webhooks/msg91 */
     webhookSecret: process.env.MSG91_WEBHOOK_SECRET || '',
   },

@@ -12,6 +12,7 @@ import {
   downloadFilingQuerySchema,
   generateFilingBodySchema,
   listFilingsQuerySchema,
+  listPtMismatchesQuerySchema,
   sendFilingWhatsAppSchema,
   updateFilingOverridesSchema,
 } from './filings.validation.js';
@@ -57,6 +58,21 @@ router.post(
   checkPermission(PERMISSION_NAMES.FILINGS_GENERATE),
   validate({ body: bulkGenerateFilingsSchema }),
   filingsController.bulkGenerateFilings,
+);
+
+/**
+ * @openapi
+ * /filings/pt-mismatches:
+ *   get:
+ *     tags: [Filings]
+ *     summary: MasterSheet P.Tax vs salary employee total mismatches
+ *     security: [{ bearerAuth: [] }]
+ */
+router.get(
+  '/pt-mismatches',
+  checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
+  validate({ query: listPtMismatchesQuerySchema }),
+  filingsController.listPtMismatches,
 );
 
 /**

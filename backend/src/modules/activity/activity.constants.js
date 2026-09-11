@@ -57,6 +57,8 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   FILING_BULK_GENERATE: 'filings.bulk_generate',
   FILING_OVERRIDES_UPDATE: 'filings.overrides_update',
   FILING_WHATSAPP_SEND: 'filings.whatsapp_send',
+  WHATSAPP_SEND_DELETE: 'whatsappSends.delete',
+  WHATSAPP_SEND_REFRESH: 'whatsappSends.refresh_status',
 
   TEMPLATE_CREATE: 'templates.create',
   TEMPLATE_UPDATE: 'templates.update',
@@ -77,4 +79,5 @@ export const ENTITY_TYPES = Object.freeze({
   FILING: 'Filing',
   EMPLOYEE: 'Employee',
   TEMPLATE: 'Template',
+  WHATSAPP_SEND: 'WhatsAppSend',
 });

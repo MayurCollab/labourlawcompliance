@@ -19,6 +19,8 @@ export const listWhatsAppSendsQuerySchema = paginationQuerySchema.extend({
     .optional(),
   clientId: objectIdSchema.optional(),
   clientIds: objectIdListSchema,
+  locationId: objectIdSchema.optional(),
+  locationIds: objectIdListSchema,
   status: z.enum(WHATSAPP_SEND_STATUS_VALUES).optional(),
   phone: z.string().trim().max(20).optional(),
   sortBy: z.enum(WHATSAPP_SEND_SORTABLE_FIELDS).default('sentAt'),

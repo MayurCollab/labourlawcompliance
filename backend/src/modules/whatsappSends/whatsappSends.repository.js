@@ -2,7 +2,11 @@ import WhatsAppSend from './whatsappSend.model.js';
 
 const CLIENT_POPULATE = {
   path: 'client',
-  select: 'clientCode companyName',
+  select: 'clientCode companyName location',
+  populate: {
+    path: 'location',
+    select: 'name',
+  },
 };
 
 const ACTOR_POPULATE = {
@@ -60,3 +64,20 @@ export const findWhatsAppSendForWebhook = async ({
 };
 
 export const saveWhatsAppSend = (send) => send.save();
+
+const OPEN_STATUSES = ['accepted', 'sent', 'delivered'];
+
+/**
+ * Recent sends that can still move (accepted → sent → delivered → read).
+ */
+export const findOpenWhatsAppSendsSince = (since, limit = 500) =>
+  WhatsAppSend.find({
+    status: { $in: OPEN_STATUSES },
+    sentAt: { $gte: since },
+  })
+    .select('requestId providerMessageId phone sentAt status')
+    .sort({ sentAt: 1 })
+    .limit(limit)
+    .lean();
+
+export const deleteWhatsAppSendById = (id) => WhatsAppSend.findByIdAndDelete(id);

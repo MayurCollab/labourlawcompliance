@@ -5,6 +5,7 @@ import { templatesApi } from '@/api/templates.api';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
+import { confirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { Drawer } from '@/components/dialogs/Drawer';
 import { Input } from '@/components/inputs/Input';
 import { Select } from '@/components/inputs/Select';
@@ -16,7 +17,6 @@ import {
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import {
-  useComputeFilingMutation,
   useDownloadFilingMutation,
   useFilingQuery,
   useGenerateFilingMutation,
@@ -29,12 +29,14 @@ import {
   useResolveTemplateQuery,
 } from '@/hooks/useTemplates';
 import { useUpdateClientMutation } from '@/hooks/useClients';
+import { usePermission } from '@/hooks/usePermission';
 import { useSettingsQuery } from '@/hooks/useMasters';
 import type {
   EmployeePreviewRow,
   Filing,
   FilingSlabRow,
 } from '@/types/filing.types';
+import { ptMismatchConfirmMessage } from '@/utils/ptMismatch';
 
 const formatAmount = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : value.toLocaleString('en-IN');
@@ -79,13 +81,14 @@ export function FilingComputeDrawer({
   const filingId = open && filing ? filing.id : null;
   const clientId = filing?.client?.id ?? '';
   const queryClient = useQueryClient();
+  const { hasPermission } = usePermission();
+  const canGenerate = hasPermission(PERMISSIONS.FILINGS_GENERATE);
 
   const detailQuery = useFilingQuery(filingId);
   const settingsQuery = useSettingsQuery({ enabled: open });
   const bundledQuery = useBundledTemplatesQuery({ enabled: open });
   const resolvedQuery = useResolveTemplateQuery(clientId, { enabled: open && Boolean(clientId) });
 
-  const computeMutation = useComputeFilingMutation();
   const generateMutation = useGenerateFilingMutation();
   const downloadMutation = useDownloadFilingMutation();
   const overridesMutation = useUpdateFilingOverridesMutation();
@@ -106,9 +109,7 @@ export function FilingComputeDrawer({
       ? overridesMutation.data
       : generateMutation.data?.id === filingId
         ? generateMutation.data
-        : computeMutation.data?.id === filingId
-          ? computeMutation.data
-          : detailQuery.data ?? filing;
+        : detailQuery.data ?? filing;
 
   const computation = current?.computation;
   const generatedFile = current?.generatedFile;
@@ -271,7 +272,6 @@ export function FilingComputeDrawer({
 
   const busy =
     detailQuery.isFetching ||
-    computeMutation.isPending ||
     generateMutation.isPending ||
     downloadMutation.isPending ||
     overridesMutation.isPending ||
@@ -336,6 +336,52 @@ export function FilingComputeDrawer({
     });
   };
 
+  const storedFilingDate = toDateInput(current?.generateOverrides?.filingDate);
+  const storedAdditionalTax =
+    current?.generateOverrides?.additionalTaxPayable != null
+      ? String(current.generateOverrides.additionalTaxPayable)
+      : '';
+  const overridesDirty =
+    overrideForm.filingDate !== storedFilingDate ||
+    overrideForm.additionalTaxPayable.trim() !== storedAdditionalTax.trim();
+  const templateDirty =
+    Boolean(activeTemplateId) && activeTemplateId !== resolvedTemplateId;
+  const fieldsDirty = overridesDirty || templateDirty;
+
+  const saveChangedFields = async () => {
+    if (!filing) return;
+    if (templateDirty && activeTemplateId && filing.client?.id) {
+      await saveTemplateForClient();
+    }
+    await saveEmployeePreference();
+    if (overridesDirty) {
+      await saveOverrides();
+    }
+  };
+
+  const downloadPdf = async () => {
+    if (!filing) return;
+    const mismatchSource = current?.ptMismatch ? current : filing;
+    if (mismatchSource.ptMismatch) {
+      const confirmed = await confirmDialog({
+        title: 'P.Tax amount does not match salary',
+        message: ptMismatchConfirmMessage([mismatchSource]),
+        confirmLabel: 'Generate anyway',
+        cancelLabel: 'Cancel',
+      });
+      if (!confirmed) return;
+    }
+    await saveChangedFields();
+    const generated = await generateMutation.mutateAsync({
+      id: filing.id,
+      computeIfNeeded: true,
+    });
+    await downloadMutation.mutateAsync({
+      id: filing.id,
+      filename: generated.generatedFile?.filename,
+    });
+  };
+
   const previewSelectedTemplate = async () => {
     if (!selectedTemplate?.code) return;
     const html = await templatesApi.fetchBundledPreviewHtml(selectedTemplate.code);
@@ -372,66 +418,41 @@ export function FilingComputeDrawer({
           <PermissionGate permission={PERMISSIONS.FILINGS_EDIT}>
             <Button
               variant="outline"
-              loading={overridesMutation.isPending}
-              disabled={!filing || busy}
-              onClick={() => void saveOverrides()}
+              loading={overridesMutation.isPending || assignMutation.isPending}
+              disabled={!filing || busy || !fieldsDirty}
+              onClick={() => void saveChangedFields()}
             >
-              Save month fields
+              Save fields
             </Button>
           </PermissionGate>
-          <PermissionGate permission={PERMISSIONS.FILINGS_EDIT}>
-            <Button
-              loading={computeMutation.isPending}
-              disabled={!filing || busy}
-              onClick={() => {
-                if (!filing) return;
-                void computeMutation.mutateAsync(filing.id);
-              }}
-            >
-              Compute PT
-            </Button>
-          </PermissionGate>
-          <PermissionGate permission={PERMISSIONS.FILINGS_GENERATE}>
-            <Button
-              loading={generateMutation.isPending}
-              disabled={!filing || !current?.hasTemplate || busy}
-              onClick={async () => {
-                if (!filing) return;
-                if (templateChanged && activeTemplateId && filing.client?.id) {
-                  await saveTemplateForClient();
-                }
-                await saveEmployeePreference();
-                await saveOverrides();
-                await generateMutation.mutateAsync({
-                  id: filing.id,
-                  computeIfNeeded: true,
-                });
-              }}
-            >
-              Generate PDF
-            </Button>
-          </PermissionGate>
-          <PermissionGate permission={PERMISSIONS.FILINGS_VIEW}>
-            <Button
-              variant="outline"
-              loading={downloadMutation.isPending}
-              disabled={!filing || !generatedFile || busy}
-              onClick={() => {
-                if (!filing) return;
-                void downloadMutation.mutateAsync({
-                  id: filing.id,
-                  filename: generatedFile?.filename,
-                });
-              }}
-            >
-              {generatedFile?.mimetype?.includes('pdf')
-                ? 'Download PDF'
-                : generatedFile?.mimetype?.includes('sheet') ||
-                    generatedFile?.filename?.endsWith('.xlsx')
-                  ? 'Download Excel'
-                  : 'Download'}
-            </Button>
-          </PermissionGate>
+          {canGenerate ? (
+            <PermissionGate permission={PERMISSIONS.FILINGS_GENERATE}>
+              <Button
+                loading={generateMutation.isPending || downloadMutation.isPending}
+                disabled={!filing || !current?.hasTemplate || busy}
+                onClick={() => void downloadPdf()}
+              >
+                Download PDF
+              </Button>
+            </PermissionGate>
+          ) : (
+            <PermissionGate permission={PERMISSIONS.FILINGS_VIEW}>
+              <Button
+                variant="outline"
+                loading={downloadMutation.isPending}
+                disabled={!filing || !generatedFile || busy}
+                onClick={() => {
+                  if (!filing) return;
+                  void downloadMutation.mutateAsync({
+                    id: filing.id,
+                    filename: generatedFile?.filename,
+                  });
+                }}
+              >
+                Download PDF
+              </Button>
+            </PermissionGate>
+          )}
         </div>
       }
     >
@@ -454,6 +475,21 @@ export function FilingComputeDrawer({
               Assign a district template or use the general layout.
             </p>
           )}
+
+          {current?.ptMismatch ? (
+            <div
+              role="status"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              Master sheet P.Tax is{' '}
+              {formatAmount(current.ptAmount)} but salary employees total{' '}
+              {formatAmount(current.salaryPtTotal)}
+              {current.salaryEmployeeCount
+                ? ` (${current.salaryEmployeeCount} employees)`
+                : ''}
+              . Confirm this before generating Form 5.
+            </div>
+          ) : null}
 
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -805,9 +841,12 @@ export function FilingComputeDrawer({
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No salary computation yet. Generate can still fill Form 5 from the
-                MasterSheet P.Tax Amount for {filing.periodLabel || filing.period}.
-                Compute PT when salary rows are imported.
+                No salary computation yet. Download PDF computes PT slabs and
+                generates the file in one step
+                {filing.periodLabel || filing.period
+                  ? ` for ${filing.periodLabel || filing.period}`
+                  : ''}
+                .
               </p>
             )}
           </section>

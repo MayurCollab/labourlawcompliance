@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import Employee from './employee.model.js';
 
 const CLIENT_POPULATE = {
@@ -57,3 +59,55 @@ export const softDeleteEmployees = (filter, actorId) =>
 
 export const countEmployeesForPurge = (filter) =>
   Employee.countDocuments({ ...filter, isDeleted: false });
+
+/**
+ * Sum stored P.Tax per client/period for Form 5 vs MasterSheet checks.
+ * Soft-delete is not auto-applied on aggregate — filter isDeleted here.
+ */
+export const aggregatePTaxByClientPeriod = ({
+  periods = [],
+  clientIds = [],
+  clientCodes = [],
+} = {}) => {
+  const periodList = [...new Set((periods || []).map(String).filter(Boolean))];
+  const objectIds = [...new Set((clientIds || []).map(String).filter(Boolean))]
+    .filter((id) => mongoose.isValidObjectId(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+  const codes = [
+    ...new Set(
+      (clientCodes || [])
+        .map((code) => String(code).trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (!periodList.length || (!objectIds.length && !codes.length)) {
+    return Promise.resolve([]);
+  }
+
+  const or = [];
+  if (objectIds.length) or.push({ client: { $in: objectIds } });
+  if (codes.length) or.push({ clientCode: { $in: codes } });
+
+  return Employee.aggregate([
+    {
+      $match: {
+        isDeleted: { $ne: true },
+        unmatched: { $ne: true },
+        period: { $in: periodList },
+        $or: or,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          period: '$period',
+          client: '$client',
+          clientCode: '$clientCode',
+        },
+        salaryPtTotal: { $sum: { $ifNull: ['$pTax', 0] } },
+        employeeCount: { $sum: 1 },
+      },
+    },
+  ]);
+};

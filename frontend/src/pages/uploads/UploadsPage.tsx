@@ -21,6 +21,7 @@ import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
@@ -130,7 +131,8 @@ export function UploadsPage() {
   const [companyName, setCompanyName] = useState('');
   const [rowsPage, setRowsPage] = useState(1);
   const [rowsPageSize, setRowsPageSize] =
-    useState<DataTablePageSizeOption>(50);
+    useState<DataTablePageSizeOption>(DEFAULT_DATA_TABLE_PAGE_SIZE);
+  const [sheetDataExpanded, setSheetDataExpanded] = useState(false);
   const [purgeMasterOpen, setPurgeMasterOpen] = useState(false);
   const [purgeSalaryOpen, setPurgeSalaryOpen] = useState(false);
   const [purgeClientMasterOpen, setPurgeClientMasterOpen] = useState(false);
@@ -163,6 +165,7 @@ export function UploadsPage() {
     setPeriod(upload.period || upload.parse.suggestedPeriod || '');
     setCompanyName(upload.companyName || '');
     setRowsPage(1);
+    setSheetDataExpanded(false);
   };
 
   // Rehydrate report / clear session when returning after a background import.
@@ -341,6 +344,13 @@ export function UploadsPage() {
       ? 'Save addresses to database'
       : 'Save clients to database';
 
+  const unmappedFields = (current?.parse.fields ?? []).filter(
+    (field) => typeof mapping[field.key] !== 'number',
+  );
+  const unmappedRequiredCount = unmappedFields.filter(
+    (field) => field.required,
+  ).length;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -508,35 +518,99 @@ export function UploadsPage() {
               ) : null}
             </div>
 
+            {unmappedFields.length > 0 ? (
+              <p
+                className={cn(
+                  'rounded-md border px-3 py-2 text-sm',
+                  unmappedRequiredCount > 0
+                    ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                    : 'border-amber-500/40 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
+                )}
+              >
+                {unmappedFields.length} field
+                {unmappedFields.length === 1 ? '' : 's'} not mapped
+                {unmappedRequiredCount > 0
+                  ? ` (${unmappedRequiredCount} required). Highlighted fields need a column.`
+                  : '. Highlighted fields did not match a header — pick a column if the sheet has that data.'}
+              </p>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {current.parse.fields.map((field) => (
-                <Select
-                  key={field.key}
-                  label={field.required ? `${field.label} *` : field.label}
-                  value={
-                    typeof mapping[field.key] === 'number'
-                      ? String(mapping[field.key])
-                      : ''
-                  }
-                  options={headerOptions}
-                  placeholder="Not mapped"
-                  required={field.required}
-                  onChange={(event) => {
-                    const raw = event.target.value;
-                    setMapping((prev) => ({
-                      ...prev,
-                      [field.key]: raw === '' ? null : Number(raw),
-                    }));
-                    setRowsPage(1);
-                  }}
-                />
-              ))}
+              {current.parse.fields.map((field) => {
+                const mapped = typeof mapping[field.key] === 'number';
+                return (
+                  <Select
+                    key={field.key}
+                    label={
+                      <>
+                        {field.required ? `${field.label} *` : field.label}
+                        {!mapped ? (
+                          <span
+                            className={cn(
+                              'ml-1.5 font-normal',
+                              field.required
+                                ? 'text-destructive'
+                                : 'text-amber-700 dark:text-amber-300',
+                            )}
+                          >
+                            · Unmapped
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                    value={mapped ? String(mapping[field.key]) : ''}
+                    options={headerOptions}
+                    placeholder="Not mapped"
+                    required={field.required}
+                    error={
+                      !mapped && field.required
+                        ? 'Required — pick a column'
+                        : undefined
+                    }
+                    hint={
+                      !mapped && !field.required
+                        ? 'Header name did not match — select a column if needed'
+                        : undefined
+                    }
+                    className={
+                      !mapped && !field.required
+                        ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/40 dark:bg-amber-950/30'
+                        : undefined
+                    }
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setMapping((prev) => ({
+                        ...prev,
+                        [field.key]: raw === '' ? null : Number(raw),
+                      }));
+                      setRowsPage(1);
+                    }}
+                  />
+                );
+              })}
             </div>
 
             <div>
-              <h3 className="mb-2 text-sm font-medium">
-                Sheet data ({rowCount})
-              </h3>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">
+                  Sheet data ({rowCount})
+                </h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  leftIcon={
+                    sheetDataExpanded ? (
+                      <ChevronUp className="size-4" />
+                    ) : (
+                      <ChevronDown className="size-4" />
+                    )
+                  }
+                  onClick={() => setSheetDataExpanded((prev) => !prev)}
+                >
+                  {sheetDataExpanded ? 'Shrink table' : 'Expand table'}
+                </Button>
+              </div>
               <DataTable
                 columns={previewColumns}
                 data={rowsQuery.data?.rows ?? []}
@@ -549,6 +623,7 @@ export function UploadsPage() {
                   setRowsPage(1);
                   setRowsPageSize(size);
                 }}
+                gridMaxHeight={sheetDataExpanded ? undefined : 280}
                 emptyTitle="No data rows"
                 emptyDescription="Pick a sheet that has the expected headers and data."
               />

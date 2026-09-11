@@ -38,6 +38,14 @@ export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(10000).default(10),
 });
 
+/** Query-string friendly boolean (`true` / `false` / `1` / `0`). */
+export const booleanQuerySchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return value;
+}, z.boolean().optional());
+
 export const passwordSchema = z
   .string({ error: 'Password is required' })
   .min(8, 'Password must be at least 8 characters')

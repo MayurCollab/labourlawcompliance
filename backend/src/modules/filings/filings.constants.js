@@ -14,6 +14,7 @@ export const FILINGS_CODES = Object.freeze({
 
 export const FILINGS_MESSAGES = Object.freeze({
   FETCHED: 'Filings fetched successfully.',
+  PT_MISMATCHES_FETCHED: 'P.Tax mismatches fetched successfully.',
   COMPUTED: 'PT slabs computed successfully.',
   GENERATED: 'Form 5 generated successfully.',
   BULK_GENERATED: 'Bulk Form 5 generate finished.',

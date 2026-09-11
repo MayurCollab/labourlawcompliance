@@ -450,7 +450,14 @@ export const bulkUpsertMasterClients = async ({
   chunkSize = 500,
   onChunk,
 }) => {
-  const report = { inserted: 0, updated: 0, unchanged: 0, skipped: [] };
+  const report = {
+    inserted: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: [],
+    clientCodes: [],
+    insertedClientCodes: [],
+  };
 
   /** @type {Map<string, object>} */
   const byCode = new Map();
@@ -489,6 +496,11 @@ export const bulkUpsertMasterClients = async ({
       meta.push({ kind: 'insert', row });
     }
   }
+
+  report.clientCodes = writeRows.map((row) => row.clientCode);
+  report.insertedClientCodes = meta
+    .filter((item) => item.kind === 'insert')
+    .map((item) => item.row.clientCode);
 
   let written = 0;
   for (let i = 0; i < ops.length; i += chunkSize) {

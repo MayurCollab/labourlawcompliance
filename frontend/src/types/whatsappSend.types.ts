@@ -15,6 +15,7 @@ export type WhatsAppSendClientRef = {
   id: string;
   clientCode: string | null;
   companyName: string | null;
+  location: { id: string; name: string | null } | null;
 };
 
 export type WhatsAppSend = {
@@ -50,6 +51,8 @@ export type ListWhatsAppSendsParams = {
   period?: string;
   clientId?: string;
   clientIds?: string[];
+  locationId?: string;
+  locationIds?: string[];
   status?: WhatsAppSendStatus;
   phone?: string;
   sortBy?:
@@ -71,4 +74,12 @@ export type ListWhatsAppSendsResult = {
     total: number;
     totalPages: number;
   };
+};
+
+export type RefreshWhatsAppSendsResult = {
+  checked: number;
+  logsFetched: number;
+  matched: number;
+  updated: number;
+  providerError: string | null;
 };

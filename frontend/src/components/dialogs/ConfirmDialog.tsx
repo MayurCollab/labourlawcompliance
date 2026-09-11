@@ -60,7 +60,7 @@ export function ConfirmDialog({
         onOpenChange(next);
       }}
       title={title}
-      description={message}
+      description={<span className="whitespace-pre-line">{message}</span>}
       closeOnOverlayClick={!busy}
       footer={
         <>

@@ -392,6 +392,8 @@ const importMaster = async (
     unchanged: 0,
     skipped: [],
     unmatched: [],
+    clientCodes: [],
+    insertedClientCodes: [],
     filings: { inserted: 0, updated: 0, unchanged: 0 },
   };
 
@@ -479,6 +481,10 @@ const importMaster = async (
   report.inserted = clientBulk.report.inserted;
   report.updated = clientBulk.report.updated;
   report.skipped = [...clientBulk.report.skipped];
+  report.clientCodes = [...(clientBulk.report.clientCodes || [])];
+  report.insertedClientCodes = [
+    ...(clientBulk.report.insertedClientCodes || []),
+  ];
 
   const filingRows = [];
   for (const prepared of preparedClients) {

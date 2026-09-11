@@ -14,6 +14,7 @@ import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
@@ -45,6 +46,7 @@ const previousMonth = () => {
 const emptyFilters: FilterValues = {
   locationIds: [],
   clientIds: [],
+  recentlyAdded: '',
 };
 
 const formatDate = (value: string | null | undefined) => {
@@ -136,7 +138,9 @@ export function Form5WhatsAppPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<FilterValues>(emptyFilters);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(50);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(
+    DEFAULT_DATA_TABLE_PAGE_SIZE,
+  );
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'clientCode',
     sortOrder: 'asc',
@@ -154,6 +158,7 @@ export function Form5WhatsAppPage() {
 
   const locationIds = filterIds(appliedFilters.locationIds);
   const clientIds = filterIds(appliedFilters.clientIds);
+  const recentlyAdded = appliedFilters.recentlyAdded === 'lastSheet';
 
   const params: ListFilingsParams = {
     page,
@@ -162,6 +167,7 @@ export function Form5WhatsAppPage() {
     period: period || undefined,
     locationIds: locationIds.length ? locationIds : undefined,
     clientIds: clientIds.length ? clientIds : undefined,
+    recentlyAdded: recentlyAdded || undefined,
     generateStatus: 'generated',
     sortBy: sort.sortBy as ListFilingsParams['sortBy'],
     sortOrder: sort.sortOrder,
@@ -628,6 +634,26 @@ export function Form5WhatsAppPage() {
           setPage(1);
           setSelectedIds(new Set());
         }}
+        headerActions={
+          <Button
+            type="button"
+            size="sm"
+            variant={recentlyAdded ? 'primary' : 'outline'}
+            aria-pressed={recentlyAdded}
+            onClick={() => {
+              const next = {
+                ...filters,
+                recentlyAdded: recentlyAdded ? '' : 'lastSheet',
+              };
+              setFilters(next);
+              setAppliedFilters(next);
+              setPage(1);
+              setSelectedIds(new Set());
+            }}
+          >
+            Recently added
+          </Button>
+        }
         footer={
           <>
             <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>

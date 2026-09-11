@@ -11,6 +11,7 @@ export { Pagination, type PaginationProps } from './Pagination';
 export {
   DATA_TABLE_PAGE_SIZES,
   DATA_TABLE_ALL_PAGE_SIZE,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   toPageSizeOption,
   type DataTablePageSizeOption,

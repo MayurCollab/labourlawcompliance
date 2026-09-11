@@ -217,7 +217,21 @@ export function MultiSelect({
                   size="sm"
                   disabled={selectableFiltered.length === 0}
                   onClick={toggleFiltered}
+                  className="gap-2"
                 >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded-sm border',
+                      allFilteredSelected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input bg-background',
+                    )}
+                  >
+                    {allFilteredSelected ? (
+                      <Check className="size-3" strokeWidth={3} />
+                    ) : null}
+                  </span>
                   {allFilteredSelected ? 'Clear filtered' : 'Select filtered'}
                 </Button>
                 <span className="px-1 text-xs text-muted-foreground">
@@ -251,12 +265,17 @@ export function MultiSelect({
                           isSelected && 'bg-muted',
                         )}
                       >
-                        <Check
+                        <span
+                          aria-hidden
                           className={cn(
-                            'size-4 shrink-0',
-                            isSelected ? 'opacity-100' : 'opacity-0',
+                            'flex size-4 shrink-0 items-center justify-center rounded-sm border',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-input bg-background',
                           )}
-                        />
+                        >
+                          {isSelected ? <Check className="size-3" strokeWidth={3} /> : null}
+                        </span>
                         <span className="truncate text-left">{option.label}</span>
                       </button>
                     );

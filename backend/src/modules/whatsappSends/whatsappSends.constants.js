@@ -36,5 +36,7 @@ export const WHATSAPP_SENDS_CODES = Object.freeze({
 
 export const WHATSAPP_SENDS_MESSAGES = Object.freeze({
   FETCHED: 'WhatsApp sends fetched successfully.',
+  DELETED: 'WhatsApp send deleted successfully.',
+  REFRESHED: 'WhatsApp send statuses refreshed.',
   WEBHOOK_OK: 'WhatsApp status webhook accepted.',
 });

@@ -8,6 +8,11 @@ export const listFilings = asyncHandler(async (req, res) => {
   return sendSuccess(res, result, FILINGS_MESSAGES.FETCHED);
 });
 
+export const listPtMismatches = asyncHandler(async (req, res) => {
+  const result = await filingsService.listPtMismatches(req.query);
+  return sendSuccess(res, result, FILINGS_MESSAGES.PT_MISMATCHES_FETCHED);
+});
+
 export const getFiling = asyncHandler(async (req, res) => {
   const filing = await filingsService.getFiling(req.params.id);
   return sendSuccess(res, { filing }, FILINGS_MESSAGES.FETCHED);

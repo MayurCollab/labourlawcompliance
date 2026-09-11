@@ -2,7 +2,9 @@ import { Router } from 'express';
 
 import authenticate from '../../middleware/auth.js';
 import checkPermission from '../../middleware/checkPermission.js';
+import { userWriteLimiter } from '../../middleware/rateLimiter.js';
 import validate from '../../middleware/validate.js';
+import { idParamSchema } from '../../validations/common.validation.js';
 import { PERMISSION_NAMES } from '../permissions/permissions.constants.js';
 import * as whatsappSendsController from './whatsappSends.controller.js';
 import { listWhatsAppSendsQuerySchema } from './whatsappSends.validation.js';
@@ -30,6 +32,7 @@ router.post(
 );
 
 router.use(authenticate);
+router.use(userWriteLimiter);
 
 /**
  * @openapi
@@ -54,6 +57,41 @@ router.get(
   checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
   validate({ query: listWhatsAppSendsQuerySchema }),
   whatsappSendsController.listWhatsAppSends,
+);
+
+/**
+ * @openapi
+ * /whatsapp-sends/refresh-status:
+ *   post:
+ *     tags: [WhatsApp Sends]
+ *     summary: Refresh delivery status from MSG91 logs (covers missed webhooks)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Refresh counts
+ */
+router.post(
+  '/refresh-status',
+  checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
+  whatsappSendsController.refreshWhatsAppSendStatuses,
+);
+
+/**
+ * @openapi
+ * /whatsapp-sends/{id}:
+ *   delete:
+ *     tags: [WhatsApp Sends]
+ *     summary: Delete a WhatsApp send history row
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Deleted
+ */
+router.delete(
+  '/:id',
+  checkPermission(PERMISSION_NAMES.FILINGS_SEND),
+  validate({ params: idParamSchema }),
+  whatsappSendsController.deleteWhatsAppSend,
 );
 
 export default router;

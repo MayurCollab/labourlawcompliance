@@ -1,9 +1,18 @@
 import config from '../../config/index.js';
+import { fetchWhatsAppOutboundLogs } from '../../integrations/msg91/whatsapp.js';
+import AppError from '../../utils/AppError.js';
 import logger from '../../utils/logger.js';
 import { getRequestContext } from '../../utils/requestContext.js';
 import {
+  ACTIVITY_ACTIONS,
+  ENTITY_TYPES,
+} from '../activity/activity.constants.js';
+import { recordActivity } from '../activity/activity.service.js';
+import * as clientsRepository from '../clients/clients.repository.js';
+import {
   WHATSAPP_SEND_STATUSES,
   WHATSAPP_SEND_STATUS_RANK,
+  WHATSAPP_SENDS_CODES,
 } from './whatsappSends.constants.js';
 import { toWhatsAppSendDto, toWhatsAppSendListDto } from './whatsappSends.dto.js';
 import * as whatsappSendsRepository from './whatsappSends.repository.js';
@@ -85,7 +94,12 @@ const normalizeWebhookStatus = (raw) => {
   if (value === 'delivered' || value === 'delivery') {
     return WHATSAPP_SEND_STATUSES.DELIVERED;
   }
-  if (value === 'failed' || value === 'failure' || value === 'undelivered') {
+  if (
+    value === 'failed' ||
+    value === 'failure' ||
+    value === 'undelivered' ||
+    value.startsWith('failed')
+  ) {
     return WHATSAPP_SEND_STATUSES.FAILED;
   }
   if (value === 'sent' || value === 'submit' || value === 'submitted') {
@@ -100,13 +114,23 @@ const normalizeWebhookStatus = (raw) => {
 const parseWebhookTimestamp = (...candidates) => {
   for (const value of candidates) {
     if (value === undefined || value === null || value === '') continue;
-    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      const ms = value < 1e12 ? value * 1000 : value;
+    const unwrapped =
+      typeof value === 'object' &&
+      !(value instanceof Date) &&
+      value.value !== undefined &&
+      value.value !== null
+        ? value.value
+        : value;
+    if (unwrapped === undefined || unwrapped === null || unwrapped === '') continue;
+    if (unwrapped instanceof Date && !Number.isNaN(unwrapped.getTime())) {
+      return unwrapped;
+    }
+    if (typeof unwrapped === 'number' && Number.isFinite(unwrapped)) {
+      const ms = unwrapped < 1e12 ? unwrapped * 1000 : unwrapped;
       const date = new Date(ms);
       if (!Number.isNaN(date.getTime())) return date;
     }
-    const text = String(value).trim();
+    const text = String(unwrapped).trim();
     if (/^\d+$/.test(text)) {
       const num = Number(text);
       const ms = num < 1e12 ? num * 1000 : num;
@@ -190,6 +214,8 @@ export const listWhatsAppSends = async (query) => {
     period,
     clientId,
     clientIds,
+    locationId,
+    locationIds,
     status,
     phone,
     sortBy,
@@ -219,8 +245,28 @@ export const listWhatsAppSends = async (query) => {
         .map(String),
     ),
   ];
-  if (clients.length === 1) filter.client = clients[0];
-  else if (clients.length > 1) filter.client = { $in: clients };
+  const locations = [
+    ...new Set(
+      [...(Array.isArray(locationIds) ? locationIds : []), locationId]
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+
+  if (locations.length) {
+    const inLocations = (
+      await clientsRepository.findClientIdsByLocations(locations)
+    ).map(String);
+    const allowed = new Set(inLocations);
+    const scoped = clients.length
+      ? clients.filter((id) => allowed.has(id))
+      : inLocations;
+    filter.client = { $in: scoped };
+  } else if (clients.length === 1) {
+    filter.client = clients[0];
+  } else if (clients.length > 1) {
+    filter.client = { $in: clients };
+  }
 
   if (status) filter.status = status;
 
@@ -259,8 +305,9 @@ export const getWhatsAppSend = async (id) => {
 /**
  * Apply MSG91 outbound delivery report (new or legacy webhook payload).
  * Returns { matched, send } without throwing for unknown messages.
+ * Pass `{ quiet: true }` to skip unmatched-send info logs (bulk refresh).
  */
-export const applyWhatsAppStatusWebhook = async (rawBody) => {
+export const applyWhatsAppStatusWebhook = async (rawBody, options = {}) => {
   const body = Array.isArray(rawBody) ? rawBody[0] : rawBody;
   if (!body || typeof body !== 'object') {
     return { matched: false, reason: 'empty_payload' };
@@ -291,12 +338,14 @@ export const applyWhatsAppStatusWebhook = async (rawBody) => {
   });
 
   if (!send) {
-    logger.info('[whatsappSends] Webhook with no matching send', {
-      requestId,
-      providerMessageId,
-      phone,
-      eventName,
-    });
+    if (!options.quiet) {
+      logger.info('[whatsappSends] Webhook with no matching send', {
+        requestId,
+        providerMessageId,
+        phone,
+        eventName,
+      });
+    }
     return { matched: false, reason: 'not_found' };
   }
 
@@ -344,32 +393,41 @@ export const applyWhatsAppStatusWebhook = async (rawBody) => {
         body.error,
         body.errorMessage,
         body.message,
+        body.failureReason,
         body.failure_reason,
       );
       if (errorMessage) {
         send.errorMessage = errorMessage.slice(0, 500);
       }
     }
-  } else {
-    // Still stamp timestamps if webhook carries them without a status upgrade.
-    const deliveredAt = parseWebhookTimestamp(
-      body.delivered_at,
-      body.deliveredAt,
-    );
-    const readAt = parseWebhookTimestamp(body.read_at, body.readAt);
-    if (deliveredAt && !send.deliveredAt) {
-      send.deliveredAt = deliveredAt;
-      changed = true;
+  }
+
+  const deliveredAt = parseWebhookTimestamp(
+    body.delivered_at,
+    body.deliveredAt,
+    body.deliveryTime,
+  );
+  const readAt = parseWebhookTimestamp(
+    body.read_at,
+    body.readAt,
+    body.readTime,
+  );
+  if (deliveredAt && !send.deliveredAt) {
+    send.deliveredAt = deliveredAt;
+    changed = true;
+    if (canAdvanceStatus(send.status, WHATSAPP_SEND_STATUSES.DELIVERED)) {
+      send.status = WHATSAPP_SEND_STATUSES.DELIVERED;
+      send.statusUpdatedAt = deliveredAt;
     }
-    if (readAt && !send.readAt) {
-      send.readAt = readAt;
-      if (!send.deliveredAt) send.deliveredAt = readAt;
-      if (canAdvanceStatus(send.status, WHATSAPP_SEND_STATUSES.READ)) {
-        send.status = WHATSAPP_SEND_STATUSES.READ;
-        send.statusUpdatedAt = readAt;
-      }
-      changed = true;
+  }
+  if (readAt) {
+    if (!send.readAt) send.readAt = readAt;
+    if (!send.deliveredAt) send.deliveredAt = readAt;
+    if (canAdvanceStatus(send.status, WHATSAPP_SEND_STATUSES.READ)) {
+      send.status = WHATSAPP_SEND_STATUSES.READ;
+      send.statusUpdatedAt = readAt;
     }
+    changed = true;
   }
 
   if (changed) {
@@ -398,4 +456,128 @@ export const assertWebhookAuthorized = (req) => {
     '';
 
   return String(provided) === secret;
+};
+
+export const deleteWhatsAppSend = async (id) => {
+  const send = await whatsappSendsRepository.findWhatsAppSendById(id);
+  if (!send) {
+    throw new AppError('WhatsApp send not found.', 404, {
+      code: WHATSAPP_SENDS_CODES.SEND_NOT_FOUND,
+    });
+  }
+
+  await whatsappSendsRepository.deleteWhatsAppSendById(id);
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.WHATSAPP_SEND_DELETE,
+    entityType: ENTITY_TYPES.WHATSAPP_SEND,
+    entityId: id,
+    changes: {
+      phone: send.phone,
+      clientCode: send.clientCode,
+      period: send.period,
+      status: send.status,
+    },
+  });
+};
+
+const logRowMatchesOpenSends = (row, { requestIds, providerIds, phones }) => {
+  if (!row || typeof row !== 'object') return false;
+  const { requestId, providerMessageId } = extractProviderIds(row);
+  if (requestId && requestIds.has(requestId)) return true;
+  if (providerMessageId && providerIds.has(providerMessageId)) return true;
+  const phone = normalizePhoneDigits(
+    pickFirstString(
+      row.customerNumber,
+      row.customer_number,
+      row.phone,
+      row.to,
+      row.recipient,
+    ),
+  );
+  return Boolean(phone && phones.has(phone));
+};
+
+/**
+ * Pull MSG91 outbound logs for open sends and apply the same status rules
+ * as the delivery webhook (covers missed callbacks).
+ */
+export const refreshWhatsAppSendStatuses = async () => {
+  const since = new Date();
+  since.setDate(since.getDate() - 14);
+
+  const openSends = await whatsappSendsRepository.findOpenWhatsAppSendsSince(
+    since,
+    500,
+  );
+
+  const empty = {
+    checked: openSends.length,
+    logsFetched: 0,
+    matched: 0,
+    updated: 0,
+    providerError: null,
+  };
+
+  if (openSends.length === 0 || !config.msg91.authKey) {
+    return empty;
+  }
+
+  let logs = [];
+  try {
+    logs = await fetchWhatsAppOutboundLogs({
+      startDate: openSends[0]?.sentAt || since,
+      endDate: new Date(),
+    });
+  } catch (err) {
+    logger.warn('[whatsappSends] Status refresh could not fetch MSG91 logs', {
+      error: err.message,
+    });
+    return {
+      ...empty,
+      providerError: err.message || 'MSG91 logs unavailable',
+    };
+  }
+
+  const requestIds = new Set(
+    openSends.map((row) => row.requestId).filter(Boolean),
+  );
+  const providerIds = new Set(
+    openSends.map((row) => row.providerMessageId).filter(Boolean),
+  );
+  const phones = new Set(
+    openSends.map((row) => normalizePhoneDigits(row.phone)).filter(Boolean),
+  );
+
+  const matching = logs.filter((row) =>
+    logRowMatchesOpenSends(row, { requestIds, providerIds, phones }),
+  );
+  const toApply = (matching.length > 0 ? matching : logs).slice(0, 1000);
+
+  let matched = 0;
+  let updated = 0;
+  for (const row of toApply) {
+    const result = await applyWhatsAppStatusWebhook(row, { quiet: true });
+    if (result.matched) matched += 1;
+    if (result.changed) updated += 1;
+  }
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.WHATSAPP_SEND_REFRESH,
+    entityType: ENTITY_TYPES.WHATSAPP_SEND,
+    changes: {
+      checked: openSends.length,
+      logsFetched: logs.length,
+      matched,
+      updated,
+    },
+  });
+
+  return {
+    checked: openSends.length,
+    logsFetched: logs.length,
+    matched,
+    updated,
+    providerError: null,
+  };
 };

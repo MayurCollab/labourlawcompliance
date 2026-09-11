@@ -1,5 +1,8 @@
 export const DATA_TABLE_PAGE_SIZES = [10, 25, 50, 100] as const;
 
+/** Default rows-per-page for every AG Grid / DataTable. */
+export const DEFAULT_DATA_TABLE_PAGE_SIZE = 10;
+
 /** Sent to the API when the user picks “All” (backend max is 10_000). */
 export const DATA_TABLE_ALL_PAGE_SIZE = 10_000;
 

@@ -48,6 +48,8 @@ export type ImportReport = {
   skipped: ImportSkippedRow[];
   unmatched: ImportUnmatchedRow[];
   rematchedEmployees?: number;
+  clientCodes?: string[];
+  insertedClientCodes?: string[];
   filings?: {
     inserted: number;
     updated: number;

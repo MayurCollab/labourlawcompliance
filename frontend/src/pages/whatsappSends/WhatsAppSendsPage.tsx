@@ -1,19 +1,29 @@
 import { useMemo, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 
+import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
+import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
-import { useClientOptionsQuery } from '@/hooks/useClients';
-import { useWhatsAppSendsQuery } from '@/hooks/useWhatsAppSends';
+import { PERMISSIONS } from '@/constants/permissions';
+import { useClientOptionsQuery, useLocationsQuery } from '@/hooks/useClients';
+import { usePermission } from '@/hooks/usePermission';
+import {
+  useDeleteWhatsAppSendMutation,
+  useRefreshWhatsAppSendsMutation,
+  useWhatsAppSendsQuery,
+} from '@/hooks/useWhatsAppSends';
 import { PATHS } from '@/routes/paths';
 import type {
   ListWhatsAppSendsParams,
@@ -22,6 +32,7 @@ import type {
 } from '@/types/whatsappSend.types';
 
 const emptyFilters: FilterValues = {
+  locationIds: [],
   clientIds: [],
   status: '',
 };
@@ -66,9 +77,12 @@ const STATUS_LABELS: Record<WhatsAppSendStatus, string> = {
 };
 
 /**
- * Read-only history of Form 5 WhatsApp sends with delivery / read timestamps.
+ * History of Form 5 WhatsApp sends with delivery / read timestamps.
  */
 export function WhatsAppSendsPage() {
+  const { hasPermission } = usePermission();
+  const canDelete = hasPermission(PERMISSIONS.FILINGS_SEND);
+
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState('');
@@ -76,13 +90,18 @@ export function WhatsAppSendsPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<FilterValues>(emptyFilters);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(20);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(
+    DEFAULT_DATA_TABLE_PAGE_SIZE,
+  );
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'sentAt',
     sortOrder: 'desc',
   });
+  const [pendingDelete, setPendingDelete] = useState<WhatsAppSend | null>(null);
 
   const optionsQuery = useClientOptionsQuery();
+  const locationsQuery = useLocationsQuery();
+  const locationIds = filterIds(appliedFilters.locationIds);
   const clientIds = filterIds(appliedFilters.clientIds);
   const statusValue =
     typeof appliedFilters.status === 'string' && appliedFilters.status
@@ -94,6 +113,7 @@ export function WhatsAppSendsPage() {
     limit: resolveDataTableLimit(pageSize),
     search: search || undefined,
     period: period || undefined,
+    locationIds: locationIds.length ? locationIds : undefined,
     clientIds: clientIds.length ? clientIds : undefined,
     status: statusValue,
     sortBy: sort.sortBy as ListWhatsAppSendsParams['sortBy'],
@@ -101,88 +121,135 @@ export function WhatsAppSendsPage() {
   };
 
   const sendsQuery = useWhatsAppSendsQuery(params);
+  const refreshMutation = useRefreshWhatsAppSendsMutation();
+  const deleteMutation = useDeleteWhatsAppSendMutation();
 
   const columns: DataTableColumn<WhatsAppSend>[] = useMemo(
-    () => [
-      {
-        id: 'sentAt',
-        header: 'Sent at',
-        sortable: true,
-        cell: (row) => formatDateTime(row.sentAt),
-      },
-      {
-        id: 'clientCode',
-        header: 'Client',
-        sortable: true,
-        cell: (row) => (
-          <div className="min-w-0">
-            <div className="font-medium">
-              {row.clientCode || row.client?.clientCode || '—'}
+    () => {
+      const cols: DataTableColumn<WhatsAppSend>[] = [
+        {
+          id: 'sentAt',
+          header: 'Sent at',
+          sortable: true,
+          cell: (row) => formatDateTime(row.sentAt),
+        },
+        {
+          id: 'clientCode',
+          header: 'Client',
+          sortable: true,
+          cell: (row) => (
+            <div className="min-w-0">
+              <div className="font-medium">
+                {row.clientCode || row.client?.clientCode || '—'}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {row.companyName || row.client?.companyName || '—'}
+              </div>
             </div>
-            <div className="truncate text-xs text-muted-foreground">
-              {row.companyName || row.client?.companyName || '—'}
+          ),
+        },
+        {
+          id: 'location',
+          header: 'Location',
+          cell: (row) => row.client?.location?.name || '—',
+        },
+        {
+          id: 'phone',
+          header: 'Phone',
+          sortable: true,
+          cell: (row) => row.phone,
+        },
+        {
+          id: 'period',
+          header: 'Period',
+          sortable: true,
+          cell: (row) => row.periodLabel || row.period || '—',
+        },
+        {
+          id: 'status',
+          header: 'Status',
+          sortable: true,
+          cell: (row) => (
+            <Badge
+              variant={statusBadgeVariant(row.status)}
+              title={row.errorMessage || undefined}
+            >
+              {STATUS_LABELS[row.status] || row.status}
+            </Badge>
+          ),
+        },
+        {
+          id: 'deliveredAt',
+          header: 'Delivered at',
+          cell: (row) => formatDateTime(row.deliveredAt),
+        },
+        {
+          id: 'readAt',
+          header: 'Read at',
+          cell: (row) => formatDateTime(row.readAt),
+        },
+        {
+          id: 'filename',
+          header: 'File',
+          cell: (row) => (
+            <span className="max-w-[12rem] truncate block" title={row.filename || undefined}>
+              {row.filename || '—'}
+            </span>
+          ),
+        },
+        {
+          id: 'actor',
+          header: 'Sent by',
+          cell: (row) =>
+            row.actor?.name || row.actor?.email || '—',
+        },
+      ];
+
+      if (canDelete) {
+        cols.push({
+          id: 'actions',
+          header: '',
+          className: 'text-right',
+          width: 108,
+          minWidth: 108,
+          maxWidth: 120,
+          cell: (row) => (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setPendingDelete(row)}
+              >
+                Delete
+              </Button>
             </div>
-          </div>
-        ),
-      },
-      {
-        id: 'phone',
-        header: 'Phone',
-        sortable: true,
-        cell: (row) => row.phone,
-      },
-      {
-        id: 'period',
-        header: 'Period',
-        sortable: true,
-        cell: (row) => row.periodLabel || row.period || '—',
-      },
-      {
-        id: 'status',
-        header: 'Status',
-        sortable: true,
-        cell: (row) => (
-          <Badge
-            variant={statusBadgeVariant(row.status)}
-            title={row.errorMessage || undefined}
-          >
-            {STATUS_LABELS[row.status] || row.status}
-          </Badge>
-        ),
-      },
-      {
-        id: 'deliveredAt',
-        header: 'Delivered at',
-        cell: (row) => formatDateTime(row.deliveredAt),
-      },
-      {
-        id: 'readAt',
-        header: 'Read at',
-        cell: (row) => formatDateTime(row.readAt),
-      },
-      {
-        id: 'filename',
-        header: 'File',
-        cell: (row) => (
-          <span className="max-w-[12rem] truncate block" title={row.filename || undefined}>
-            {row.filename || '—'}
-          </span>
-        ),
-      },
-      {
-        id: 'actor',
-        header: 'Sent by',
-        cell: (row) =>
-          row.actor?.name || row.actor?.email || '—',
-      },
-    ],
-    [],
+          ),
+        });
+      }
+
+      return cols;
+    },
+    [canDelete],
   );
 
   const clientOptions = (optionsQuery.data?.clients ?? []).map((client) => ({
     label: `${client.clientCode} · ${client.companyName}`,
     value: client.id,
   }));
+  const clientLocationNames = new Set(
+    (optionsQuery.data?.clients ?? [])
+      .map((client) => client.locationName?.trim().toLowerCase())
+      .filter((name): name is string => Boolean(name)),
+  );
+  const locationOptions = (locationsQuery.data ?? [])
+    .filter((location) =>
+      clientLocationNames.has(location.name.trim().toLowerCase()),
+    )
+    .map((location) => ({
+      label: location.name,
+      value: location.id,
+    }));
 
   return (
     <div className="space-y-4">
@@ -222,6 +289,14 @@ export function WhatsAppSendsPage() {
       <FilterPanel
         fields={[
           {
+            key: 'locationIds',
+            label: 'Location',
+            type: 'multiSelect',
+            options: locationOptions,
+            placeholder: 'All locations',
+            searchPlaceholder: 'Search locations…',
+          },
+          {
             key: 'clientIds',
             label: 'Client',
             type: 'multiSelect',
@@ -254,6 +329,19 @@ export function WhatsAppSendsPage() {
           setAppliedFilters(emptyFilters);
           setPage(1);
         }}
+        footer={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            leftIcon={<RefreshCw className="size-4" />}
+            loading={refreshMutation.isPending}
+            disabled={refreshMutation.isPending}
+            onClick={() => refreshMutation.mutate()}
+          >
+            Refresh status
+          </Button>
+        }
       />
 
       <DataTable
@@ -275,6 +363,32 @@ export function WhatsAppSendsPage() {
         }}
         emptyTitle="No WhatsApp sends"
         emptyDescription="Send a Form 5 from the WhatsApp page to see delivery status here."
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="Delete WhatsApp send?"
+        message={
+          pendingDelete
+            ? `Delete the send to ${pendingDelete.phone}${
+                pendingDelete.clientCode || pendingDelete.client?.clientCode
+                  ? ` (${pendingDelete.clientCode || pendingDelete.client?.clientCode})`
+                  : ''
+              }? This only removes the history row, not the WhatsApp message.`
+            : ''
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteMutation.mutate(pendingDelete.id, {
+            onSuccess: () => setPendingDelete(null),
+          });
+        }}
       />
     </div>
   );

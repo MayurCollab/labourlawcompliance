@@ -11,7 +11,10 @@ import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
+  resolveDataTableLimit,
   type DataTableColumn,
+  type DataTablePageSizeOption,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery, useLocationsQuery } from '@/hooks/useClients';
@@ -64,9 +67,16 @@ export function TemplatesPage() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(
+    DEFAULT_DATA_TABLE_PAGE_SIZE,
+  );
   const detailRef = useRef<HTMLDivElement>(null);
 
-  const listQuery = useTemplatesQuery({ page: 1, limit: 20 });
+  const listQuery = useTemplatesQuery({
+    page,
+    limit: resolveDataTableLimit(pageSize),
+  });
   const locationsQuery = useLocationsQuery();
   const clientsQuery = useClientOptionsQuery();
   const resolveQuery = useResolveTemplateQuery(resolveClientId);
@@ -466,6 +476,12 @@ export function TemplatesPage() {
         rowKey={(row) => row.id}
         loading={listQuery.isLoading}
         pagination={listQuery.data?.pagination}
+        onPageChange={setPage}
+        pageSizeSelection={pageSize}
+        onPageSizeChange={(size) => {
+          setPage(1);
+          setPageSize(size);
+        }}
         emptyTitle="No templates yet"
         emptyDescription="Upload an Excel, Word, or PDF Form 5. Highlight or colour the changeable fields, then map them. A second layout is another upload plus mapping."
       />

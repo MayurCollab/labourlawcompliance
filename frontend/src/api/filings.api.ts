@@ -4,6 +4,7 @@ import type {
   BulkGenerateProgressEvent,
   BulkGenerateReport,
   Filing,
+  FilingPtMismatch,
   ListFilingsParams,
   ListFilingsResult,
   SendFilingWhatsAppPayload,
@@ -33,6 +34,7 @@ const toQuery = (params: ListFilingsParams) => {
   if (params.clientId) query.clientId = params.clientId;
   if (params.clientIds?.length) query.clientIds = params.clientIds.join(',');
   if (params.generateStatus) query.generateStatus = params.generateStatus;
+  if (params.recentlyAdded) query.recentlyAdded = 'true';
   if (params.sortBy) query.sortBy = params.sortBy;
   if (params.sortOrder) query.sortOrder = params.sortOrder;
   return query;
@@ -113,6 +115,27 @@ export const filingsApi = {
       ApiSuccessResponse<ListFilingsResult>
     >('/api/v1/filings', { params: toQuery(params) });
     return data.data;
+  },
+
+  listPtMismatches: async (
+    params: BulkGeneratePayload,
+  ): Promise<FilingPtMismatch[]> => {
+    const query: Record<string, string> = {};
+    if (params.ids?.length) query.ids = params.ids.join(',');
+    if (params.period) query.period = params.period;
+    if (params.locationId) query.locationId = params.locationId;
+    if (params.locationIds?.length) {
+      query.locationIds = params.locationIds.join(',');
+    }
+    if (params.clientId) query.clientId = params.clientId;
+    if (params.clientIds?.length) query.clientIds = params.clientIds.join(',');
+    if (params.generateStatus) query.generateStatus = params.generateStatus;
+    if (params.search) query.search = params.search;
+    if (params.recentlyAdded) query.recentlyAdded = 'true';
+    const { data } = await axiosInstance.get<
+      ApiSuccessResponse<{ mismatches: FilingPtMismatch[] }>
+    >('/api/v1/filings/pt-mismatches', { params: query });
+    return data.data.mismatches;
   },
 
   getById: async (id: string): Promise<Filing> => {

@@ -67,6 +67,8 @@ export type DataTableProps<T> = {
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
+  /** Cap the grid body height so the table can shrink; pagination stays outside. */
+  gridMaxHeight?: number | string;
 };
 
 const getValue = <T,>(row: T, key?: string): ReactNode => {
@@ -157,6 +159,7 @@ export function DataTable<T>({
   emptyTitle = 'No results',
   emptyDescription = 'Try adjusting filters or create a new record.',
   className,
+  gridMaxHeight,
 }: DataTableProps<T>) {
   const columnDefs = useMemo<ColDef<T>[]>(
     () =>
@@ -227,9 +230,32 @@ export function DataTable<T>({
     typeof column.header === 'string' ? column.header : column.id,
   );
 
+  const paginationBar =
+    pagination && onPageChange ? (
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        pageSize={pagination.limit}
+        pageSizeSelection={resolvedPageSize}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        disabled={loading}
+      />
+    ) : null;
+
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="llc-ag-grid-shell">
+      {paginationBar}
+
+      <div
+        className="llc-ag-grid-shell"
+        style={
+          gridMaxHeight != null
+            ? { maxHeight: gridMaxHeight, overflow: 'auto' }
+            : undefined
+        }
+      >
         {loading ? (
           <DataTableLoading
             columnCount={columns.length}
@@ -268,19 +294,6 @@ export function DataTable<T>({
           </div>
         )}
       </div>
-
-      {pagination && onPageChange ? (
-        <Pagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          pageSize={pagination.limit}
-          pageSizeSelection={resolvedPageSize}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-          disabled={loading}
-        />
-      ) : null}
     </div>
   );
 }

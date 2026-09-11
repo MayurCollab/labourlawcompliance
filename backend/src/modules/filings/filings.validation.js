@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  booleanQuerySchema,
   objectIdListSchema,
   objectIdSchema,
   paginationQuerySchema,
@@ -20,9 +21,10 @@ export const listFilingsQuerySchema = paginationQuerySchema.extend({
   clientId: objectIdSchema.optional(),
   clientIds: objectIdListSchema,
   generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
+  recentlyAdded: booleanQuerySchema,
   sortBy: z.enum(FILING_SORTABLE_FIELDS).default('period'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  limit: z.coerce.number().int().min(1).max(10000).default(50),
+  limit: z.coerce.number().int().min(1).max(10000).default(10),
 });
 
 export const downloadFilingQuerySchema = z.object({
@@ -50,12 +52,35 @@ export const bulkGenerateFilingsSchema = z
     clientIds: objectIdListSchema,
     generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
     search: z.string().trim().max(100).optional(),
+    recentlyAdded: booleanQuerySchema,
   })
   .superRefine((data, ctx) => {
     if (!(data.ids && data.ids.length > 0) && !data.period) {
       ctx.addIssue({
         code: 'custom',
         message: 'Select rows or a month to generate',
+        path: ['ids'],
+      });
+    }
+  });
+
+export const listPtMismatchesQuerySchema = z
+  .object({
+    ids: objectIdListSchema,
+    period: periodSchema.optional(),
+    locationId: objectIdSchema.optional(),
+    locationIds: objectIdListSchema,
+    clientId: objectIdSchema.optional(),
+    clientIds: objectIdListSchema,
+    generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
+    search: z.string().trim().max(100).optional(),
+    recentlyAdded: booleanQuerySchema,
+  })
+  .superRefine((data, ctx) => {
+    if (!(data.ids && data.ids.length > 0) && !data.period) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Select rows or a month to check P.Tax',
         path: ['ids'],
       });
     }

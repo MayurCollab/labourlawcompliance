@@ -36,7 +36,9 @@ export type FilterPanelProps = {
   onApply?: (values: FilterValues) => void;
   onReset?: () => void;
   title?: ReactNode;
-  /** Optional actions row under the fields (e.g. bottom-right buttons). */
+  /** Optional actions next to Reset (e.g. toggle filters). */
+  headerActions?: ReactNode;
+  /** Optional actions row under the fields (right-aligned, full width). */
   footer?: ReactNode;
   className?: string;
 };
@@ -58,6 +60,7 @@ export function FilterPanel({
   onApply,
   onReset,
   title = 'Filters',
+  headerActions,
   footer,
   className,
 }: FilterPanelProps) {
@@ -76,10 +79,15 @@ export function FilterPanel({
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        {onReset ? (
-          <Button type="button" variant="ghost" size="sm" onClick={onReset}>
-            Reset
-          </Button>
+        {headerActions || onReset ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {headerActions}
+            {onReset ? (
+              <Button type="button" variant="ghost" size="sm" onClick={onReset}>
+                Reset
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -144,13 +152,13 @@ export function FilterPanel({
             />
           );
         })}
-
-        {footer ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-2 lg:col-span-1">
-            {footer}
-          </div>
-        ) : null}
       </div>
+
+      {footer ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {footer}
+        </div>
+      ) : null}
     </div>
   );
 }

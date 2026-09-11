@@ -17,12 +17,25 @@ const toActorDto = (actorId, actorEmail) => {
 const toClientDto = (client) => {
   if (!client) return null;
   if (typeof client !== 'object') {
-    return { id: String(client), clientCode: null, companyName: null };
+    return {
+      id: String(client),
+      clientCode: null,
+      companyName: null,
+      location: null,
+    };
   }
+  const location = client.location;
   return {
     id: String(client._id ?? client.id),
     clientCode: client.clientCode ?? null,
     companyName: client.companyName ?? null,
+    location:
+      location && typeof location === 'object'
+        ? {
+            id: String(location._id ?? location.id ?? ''),
+            name: location.name ?? null,
+          }
+        : null,
   };
 };
 

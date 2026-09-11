@@ -16,6 +16,22 @@ export const listWhatsAppSends = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/v1/whatsapp-sends/refresh-status
+ */
+export const refreshWhatsAppSendStatuses = asyncHandler(async (req, res) => {
+  const result = await whatsappSendsService.refreshWhatsAppSendStatuses();
+  return sendSuccess(res, result, WHATSAPP_SENDS_MESSAGES.REFRESHED);
+});
+
+/**
+ * DELETE /api/v1/whatsapp-sends/:id
+ */
+export const deleteWhatsAppSend = asyncHandler(async (req, res) => {
+  await whatsappSendsService.deleteWhatsAppSend(req.params.id);
+  return sendSuccess(res, null, WHATSAPP_SENDS_MESSAGES.DELETED);
+});
+
+/**
  * POST /api/webhooks/whatsapp/status
  * Also available at POST /api/v1/whatsapp-sends/webhooks/msg91
  * Public MSG91 outbound delivery callback (sent / delivered / read / failed).

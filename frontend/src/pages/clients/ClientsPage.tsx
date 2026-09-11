@@ -19,6 +19,7 @@ import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
@@ -84,7 +85,9 @@ export function ClientsPage() {
     locationIds: [],
   });
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(10);
+  const [pageSize, setPageSize] = useState<DataTablePageSizeOption>(
+    DEFAULT_DATA_TABLE_PAGE_SIZE,
+  );
   const [sort, setSort] = useState<DataTableSort>({
     sortBy: 'createdAt',
     sortOrder: 'desc',
