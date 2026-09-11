@@ -3,7 +3,7 @@ import Filing from './filing.model.js';
 const CLIENT_POPULATE = {
   path: 'client',
   select:
-    'clientCode companyName location phyCode template includeEmployeesOnForm5 address signatoryName contactNumber',
+    'clientCode companyName location phyCode template includeEmployeesOnForm5 address signatoryName contactNumber recipientName',
   populate: [
     {
       path: 'location',

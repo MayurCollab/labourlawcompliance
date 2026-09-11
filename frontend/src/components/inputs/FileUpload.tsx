@@ -119,9 +119,6 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(
                 {accept ? `Accepted: ${accept}` : 'Any file type'}
               </p>
             </div>
-            <Button type="button" variant="outline" size="sm" disabled={disabled}>
-              Browse
-            </Button>
           </div>
 
           <input

@@ -91,7 +91,12 @@ export function FilterPanel({
         ) : null}
       </div>
 
-      <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        className={cn(
+          'grid items-end gap-3 sm:grid-cols-2',
+          fields.length >= 3 && 'lg:grid-cols-3',
+        )}
+      >
         {fields.map((field) => {
           if (field.type === 'multiSelect') {
             return (
@@ -162,6 +167,43 @@ export function FilterPanel({
     </div>
   );
 }
+
+/** Distinct locations that are actually used by clients (MasterSheet), for filter dropdowns. */
+export const locationOptionsFromClients = (
+  clients: {
+    locationId?: string | null;
+    locationName?: string | null;
+  }[] = [],
+): SelectOption[] => {
+  const byId = new Map<string, string>();
+  const byName = new Map<string, string>();
+
+  for (const client of clients) {
+    const name = client.locationName?.trim();
+    const id = client.locationId?.trim();
+    if (id && name) {
+      if (!byId.has(id)) byId.set(id, name);
+      continue;
+    }
+    if (name) {
+      const key = name.toLowerCase();
+      if (!byName.has(key)) byName.set(key, name);
+    }
+  }
+
+  const named = [...byId.entries()].map(([value, label]) => ({ value, label }));
+  if (named.length > 0) {
+    return named.sort((left, right) =>
+      left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }),
+    );
+  }
+
+  return [...byName.values()]
+    .sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: 'base' }),
+    )
+    .map((label) => ({ value: label, label }));
+};
 
 /** Normalize a filter value to a string id list for API query params. */
 export const filterIds = (value: FilterValue): string[] => asStringArray(value);

@@ -1178,19 +1178,36 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     });
   }
 
-  const clientId = clientRefId(filing.client);
-  const shouldSavePhone = body?.savePhone !== false;
-  if (shouldSavePhone && clientId && body?.phone !== undefined) {
-    await clientsService.updateClient(
-      clientId,
-      { contactNumber: String(body.phone).trim() || null },
-      actorId,
+  const rawRecipientName =
+    body?.recipientName !== undefined &&
+    body?.recipientName !== null &&
+    String(body.recipientName).trim()
+      ? String(body.recipientName).trim()
+      : String(filing.client?.recipientName ?? '').trim();
+
+  if (!rawRecipientName) {
+    throw new AppError(
+      'Add a recipient name for this client before sending on WhatsApp.',
+      400,
+      { code: FILINGS_CODES.WHATSAPP_RECIPIENT_REQUIRED },
     );
   }
 
+  const clientId = clientRefId(filing.client);
+  const shouldSavePhone = body?.savePhone !== false;
+  const shouldSaveRecipient = body?.saveRecipientName !== false;
+  const clientPatch = {};
+  if (shouldSavePhone && clientId && body?.phone !== undefined) {
+    clientPatch.contactNumber = String(body.phone).trim() || null;
+  }
+  if (shouldSaveRecipient && clientId && body?.recipientName !== undefined) {
+    clientPatch.recipientName = String(body.recipientName).trim() || null;
+  }
+  if (clientId && Object.keys(clientPatch).length) {
+    await clientsService.updateClient(clientId, clientPatch, actorId);
+  }
+
   const { monthName, year } = periodMonthAndYear(filing.period);
-  const companyName =
-    filing.client?.companyName || filing.clientCode || 'Client';
   const filename = ensurePdfFilename(filing.generatedFile.filename);
 
   const sendLedgerBase = {
@@ -1213,7 +1230,7 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       phone,
       filename,
       mediaUrl,
-      companyName,
+      recipientName: rawRecipientName,
       monthName,
       year,
     });
@@ -1238,6 +1255,7 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     entityId: filing.id,
     changes: {
       phone,
+      recipientName: rawRecipientName,
       filename,
       period: filing.period,
       clientCode: filing.clientCode,

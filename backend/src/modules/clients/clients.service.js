@@ -153,6 +153,9 @@ export const listClientOptions = async () => {
       companyName: client.companyName,
       phyCode: client.phyCode,
       fundCode: client.fundCode,
+      locationId:
+        client.location?.id ??
+        (client.location?._id ? String(client.location._id) : null),
       locationName: client.location?.name ?? null,
     })),
     companies: [...companies.values()]
@@ -188,6 +191,7 @@ export const createClient = async (data, actorId) => {
     address: blankToNull(data.address) ?? null,
     rcNumber: blankToNull(data.rcNumber) ?? null,
     contactNumber: blankToNull(data.contactNumber) ?? null,
+    recipientName: blankToNull(data.recipientName) ?? null,
     fundCode: blankToNull(data.fundCode) ?? null,
     phyCode: blankToNull(data.phyCode) ?? null,
     status: blankToNull(data.status) ?? null,
@@ -236,6 +240,7 @@ export const updateClient = async (id, data, actorId) => {
     'address',
     'rcNumber',
     'contactNumber',
+    'recipientName',
     'fundCode',
     'phyCode',
     'status',

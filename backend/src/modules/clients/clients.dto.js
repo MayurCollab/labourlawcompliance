@@ -10,6 +10,7 @@ export const toClientDto = (client) => ({
   address: client.address,
   rcNumber: client.rcNumber,
   contactNumber: client.contactNumber,
+  recipientName: client.recipientName ?? null,
   fundCode: client.fundCode,
   phyCode: client.phyCode,
   status: client.status,

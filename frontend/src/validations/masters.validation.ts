@@ -27,6 +27,7 @@ export const clientFormSchema = z.object({
   address: z.string().trim().max(500).optional(),
   rcNumber: z.string().trim().max(64).optional(),
   contactNumber: z.string().trim().max(32).optional(),
+  recipientName: z.string().trim().max(120).optional(),
   fundCode: z.string().trim().max(32).optional(),
   phyCode: z.string().trim().max(32).optional(),
   status: z.string().trim().max(32).optional(),

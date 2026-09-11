@@ -5,7 +5,7 @@ import { filingsApi } from '@/api/filings.api';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
-import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
+import { FilterPanel, filterIds, locationOptionsFromClients, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { confirmDialog } from '@/components/dialogs/ConfirmDialog';
@@ -20,7 +20,7 @@ import {
   type DataTableSort,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
-import { useClientOptionsQuery, useLocationsQuery } from '@/hooks/useClients';
+import { useClientOptionsQuery } from '@/hooks/useClients';
 import {
   filingsQueryKeys,
   useDownloadFilingMutation,
@@ -93,7 +93,6 @@ export function FilingsPage() {
   const [bulkDownloading, setBulkDownloading] = useState(false);
 
   const queryClient = useQueryClient();
-  const locationsQuery = useLocationsQuery();
   const clientsQuery = useClientOptionsQuery();
   const downloadMutation = useDownloadFilingMutation();
 
@@ -233,10 +232,9 @@ export function FilingsPage() {
     pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
   const somePageSelected = pageIds.some((id) => selectedIds.has(id));
 
-  const locationOptions = (locationsQuery.data ?? []).map((location) => ({
-    label: location.name,
-    value: location.id,
-  }));
+  const locationOptions = locationOptionsFromClients(
+    clientsQuery.data?.clients,
+  );
   const clientOptions = (clientsQuery.data?.clients ?? []).map((client) => ({
     label: `${client.clientCode} · ${client.companyName}`,
     value: client.id,

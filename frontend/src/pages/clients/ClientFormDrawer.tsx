@@ -88,6 +88,7 @@ function ClientFormBody({
         address: client?.address ?? '',
         rcNumber: client?.rcNumber ?? '',
         contactNumber: client?.contactNumber ?? '',
+        recipientName: client?.recipientName ?? '',
         fundCode: client?.fundCode ?? '',
         phyCode: client?.phyCode ?? '',
         status: client?.status ?? '',
@@ -168,6 +169,12 @@ function ClientFormBody({
             label="Contact number"
             {...form.register('contactNumber')}
             error={form.formState.errors.contactNumber?.message}
+          />
+          <Input
+            label="Recipient name"
+            hint="Person greeted on Form 5 WhatsApp messages."
+            {...form.register('recipientName')}
+            error={form.formState.errors.recipientName?.message}
           />
           <Input
             label="Status"

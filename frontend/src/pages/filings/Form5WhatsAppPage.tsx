@@ -7,7 +7,7 @@ import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { Modal } from '@/components/dialogs/Modal';
-import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
+import { FilterPanel, filterIds, locationOptionsFromClients, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { Input } from '@/components/inputs/Input';
@@ -21,11 +21,7 @@ import {
   type DataTableSort,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
-import {
-  useClientOptionsQuery,
-  useLocationsQuery,
-  useUpdateClientMutation,
-} from '@/hooks/useClients';
+import { useClientOptionsQuery } from '@/hooks/useClients';
 import {
   filingsQueryKeys,
   useFilingsQuery,
@@ -33,6 +29,7 @@ import {
 } from '@/hooks/useFilings';
 import { usePermission } from '@/hooks/usePermission';
 import { PATHS } from '@/routes/paths';
+import { cn } from '@/lib/utils';
 import type { Filing, ListFilingsParams } from '@/types/filing.types';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { toastError, toastSuccess } from '@/utils/toast';
@@ -56,69 +53,84 @@ const formatDate = (value: string | null | undefined) => {
   return date.toLocaleDateString('en-IN');
 };
 
-type MobileNumberFieldProps = {
+/** Matches MSG91 WhatsApp phone rules: 10-digit mobile, optional 91 / leading zeros. */
+const isValidWhatsAppMobile = (input: string) => {
+  let digits = String(input ?? '').replace(/\D/g, '');
+  if (!digits) return false;
+  digits = digits.replace(/^0+/, '');
+  if (!digits) return false;
+  if (!digits.startsWith('91')) digits = `91${digits}`;
+  return digits.length >= 12;
+};
+
+const fieldHighlightClassName =
+  'border-amber-500 bg-amber-50 ring-2 ring-amber-400/70 placeholder:text-amber-800/80 dark:bg-amber-950/50 dark:placeholder:text-amber-200/70';
+
+type WhatsAppDraftFieldProps = {
   clientId: string;
-  /** Canonical draft from parent ref (stable across remounts via syncKey). */
   draftValue: string;
-  savedValue: string;
+  placeholder: string;
+  kind?: 'phone' | 'text';
   disabled?: boolean;
-  showSave?: boolean;
-  saving?: boolean;
   onDraftChange: (clientId: string, value: string) => void;
-  onSave?: (clientId: string, value: string) => void | Promise<void>;
-  compact?: boolean;
+  onCommit: (clientId: string) => void;
 };
 
 /**
- * Local-state phone input so AG Grid / parent re-renders do not steal focus
- * after each character. Drafts sync to the parent via callback (ref-backed).
+ * Compact local-state input so grid remounts do not steal focus after each character.
+ * Empty fields, and invalid mobile numbers, are highlighted. Values persist on pause / blur.
  */
-function MobileNumberField({
+function WhatsAppDraftField({
   clientId,
   draftValue,
-  savedValue,
+  placeholder,
+  kind = 'text',
   disabled,
-  showSave,
-  saving,
   onDraftChange,
-  onSave,
-  compact,
-}: MobileNumberFieldProps) {
+  onCommit,
+}: WhatsAppDraftFieldProps) {
   const [value, setValue] = useState(draftValue);
-  const dirty = value.trim() !== savedValue.trim();
+  const trimmed = value.trim();
+  const missing = !trimmed;
+  const invalidPhone =
+    kind === 'phone' && trimmed.length > 0 && !isValidWhatsAppMobile(trimmed);
+  const highlighted = missing || invalidPhone;
 
   useEffect(() => {
     setValue(draftValue);
   }, [clientId, draftValue]);
 
   return (
-    <div className={`flex items-center gap-2 ${compact ? 'min-w-0' : 'min-w-[12rem]'}`}>
-      <Input
-        value={value}
-        disabled={disabled}
-        placeholder="10-digit mobile"
-        onChange={(event) => {
-          const next = event.target.value;
-          setValue(next);
-          onDraftChange(clientId, next);
-        }}
-        className="h-8"
-      />
-      {showSave && onSave ? (
-        <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || !dirty || saving}
-            loading={saving}
-            onClick={() => void onSave(clientId, value.trim())}
-          >
-            Save
-          </Button>
-        </PermissionGate>
-      ) : null}
-    </div>
+    <Input
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      title={
+        invalidPhone
+          ? 'This does not look like a valid 10-digit mobile number'
+          : missing
+            ? 'This field is empty'
+            : undefined
+      }
+      onChange={(event) => {
+        const next = event.target.value;
+        setValue(next);
+        onDraftChange(clientId, next);
+      }}
+      onBlur={() => onCommit(clientId)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          (event.target as HTMLInputElement).blur();
+        }
+      }}
+      containerClassName="space-y-0"
+      className={cn(
+        'h-7 w-32 max-w-full px-2 py-0 text-xs',
+        highlighted && fieldHighlightClassName,
+      )}
+      aria-label={placeholder}
+    />
   );
 }
 
@@ -147,14 +159,19 @@ export function Form5WhatsAppPage() {
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [savingClientId, setSavingClientId] = useState<string | null>(null);
-  const [savingAllPhones, setSavingAllPhones] = useState(false);
   const [sendingFilingId, setSendingFilingId] = useState<string | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
-  /** Bumps when drafts should remount inputs (after save / external sync). */
-  const [phoneSyncKey, setPhoneSyncKey] = useState(0);
+  /** Bumps when drafts should remount inputs (after send / external sync). */
+  const [contactSyncKey, setContactSyncKey] = useState(0);
 
   const phoneDraftsRef = useRef<Record<string, string>>({});
+  const recipientDraftsRef = useRef<Record<string, string>>({});
+  const persistedPhoneRef = useRef<Record<string, string>>({});
+  const persistedNameRef = useRef<Record<string, string>>({});
+  const persistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {},
+  );
+  const persistQueueRef = useRef<Record<string, Promise<void>>>({});
 
   const locationIds = filterIds(appliedFilters.locationIds);
   const clientIds = filterIds(appliedFilters.clientIds);
@@ -176,13 +193,9 @@ export function Form5WhatsAppPage() {
   const filingsQuery = useFilingsQuery(params, {
     enabled: hasPermission(PERMISSIONS.FILINGS_VIEW),
   });
-  const locationsQuery = useLocationsQuery({
-    enabled: hasPermission(PERMISSIONS.FILINGS_VIEW),
-  });
   const clientsQuery = useClientOptionsQuery({
     enabled: hasPermission(PERMISSIONS.FILINGS_VIEW),
   });
-  const updateClientMutation = useUpdateClientMutation();
   const sendWhatsAppMutation = useSendFilingWhatsAppMutation();
 
   const rows = filingsQuery.data?.filings ?? [];
@@ -191,8 +204,19 @@ export function Form5WhatsAppPage() {
     for (const row of rows) {
       const key = row.client?.id;
       if (!key) continue;
+      const serverPhone = row.client?.contactNumber ?? '';
+      const serverName = row.client?.recipientName ?? '';
       if (phoneDraftsRef.current[key] === undefined) {
-        phoneDraftsRef.current[key] = row.client?.contactNumber ?? '';
+        phoneDraftsRef.current[key] = serverPhone;
+      }
+      if (recipientDraftsRef.current[key] === undefined) {
+        recipientDraftsRef.current[key] = serverName;
+      }
+      if (persistedPhoneRef.current[key] === undefined) {
+        persistedPhoneRef.current[key] = serverPhone;
+      }
+      if (persistedNameRef.current[key] === undefined) {
+        persistedNameRef.current[key] = serverName;
       }
     }
   }, [rows]);
@@ -201,117 +225,204 @@ export function Form5WhatsAppPage() {
     return phoneDraftsRef.current[clientKey] ?? fallback;
   }, []);
 
-  const handleDraftChange = useCallback((clientKey: string, value: string) => {
-    phoneDraftsRef.current[clientKey] = value;
+  const getDraftRecipient = useCallback((clientKey: string, fallback = '') => {
+    return recipientDraftsRef.current[clientKey] ?? fallback;
   }, []);
 
-  const handleSavePhone = useCallback(
-    async (clientKey: string, value: string) => {
+  const persistClientContacts = useCallback(
+    async (clientKey: string) => {
       if (!canEditClient) return;
-      setSavingClientId(clientKey);
+      const phone = (phoneDraftsRef.current[clientKey] ?? '').trim();
+      const recipientName = (recipientDraftsRef.current[clientKey] ?? '').trim();
+      const savedPhone = (persistedPhoneRef.current[clientKey] ?? '').trim();
+      const savedName = (persistedNameRef.current[clientKey] ?? '').trim();
+      const payload: {
+        contactNumber?: string | null;
+        recipientName?: string | null;
+      } = {};
+      if (phone !== savedPhone) payload.contactNumber = phone || null;
+      if (recipientName !== savedName) {
+        payload.recipientName = recipientName || null;
+      }
+      if (Object.keys(payload).length === 0) return;
+
       try {
-        await updateClientMutation.mutateAsync({
-          id: clientKey,
-          payload: { contactNumber: value || null },
-        });
-        phoneDraftsRef.current[clientKey] = value;
-        setPhoneSyncKey((key) => key + 1);
-      } finally {
-        setSavingClientId(null);
+        await clientsApi.update(clientKey, payload);
+        if (payload.contactNumber !== undefined) {
+          persistedPhoneRef.current[clientKey] = phone;
+          phoneDraftsRef.current[clientKey] = phone;
+        }
+        if (payload.recipientName !== undefined) {
+          persistedNameRef.current[clientKey] = recipientName;
+          recipientDraftsRef.current[clientKey] = recipientName;
+        }
+        void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      } catch (error) {
+        toastError(getApiErrorMessage(error, 'Could not save contact'));
       }
     },
-    [canEditClient, updateClientMutation],
+    [canEditClient, queryClient],
   );
 
-  const collectDirtyPhones = useCallback(
+  const persistClientContactsRef = useRef(persistClientContacts);
+  persistClientContactsRef.current = persistClientContacts;
+
+  const queuePersist = useCallback((clientKey: string) => {
+    const previous = persistQueueRef.current[clientKey] ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() => persistClientContactsRef.current(clientKey));
+    persistQueueRef.current[clientKey] = next;
+    return next;
+  }, []);
+
+  const schedulePersist = useCallback(
+    (clientKey: string) => {
+      if (!canEditClient) return;
+      const timers = persistTimersRef.current;
+      if (timers[clientKey]) clearTimeout(timers[clientKey]);
+      timers[clientKey] = setTimeout(() => {
+        delete persistTimersRef.current[clientKey];
+        void queuePersist(clientKey);
+      }, 500);
+    },
+    [canEditClient, queuePersist],
+  );
+
+  const commitPersist = useCallback(
+    (clientKey: string) => {
+      if (!canEditClient) return;
+      if (persistTimersRef.current[clientKey]) {
+        clearTimeout(persistTimersRef.current[clientKey]);
+        delete persistTimersRef.current[clientKey];
+      }
+      void queuePersist(clientKey);
+    },
+    [canEditClient, queuePersist],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const [clientKey, timer] of Object.entries(persistTimersRef.current)) {
+        clearTimeout(timer);
+        void persistClientContactsRef.current(clientKey);
+      }
+    };
+  }, []);
+
+  const handlePhoneDraftChange = useCallback(
+    (clientKey: string, value: string) => {
+      phoneDraftsRef.current[clientKey] = value;
+      schedulePersist(clientKey);
+    },
+    [schedulePersist],
+  );
+
+  const handleRecipientDraftChange = useCallback(
+    (clientKey: string, value: string) => {
+      recipientDraftsRef.current[clientKey] = value;
+      schedulePersist(clientKey);
+    },
+    [schedulePersist],
+  );
+
+  const collectDirtyContacts = useCallback(
     (list: Filing[]) => {
       const byClient = new Map<
         string,
-        { phone: string; saved: string; clientCode: string }
+        {
+          payload: {
+            contactNumber?: string | null;
+            recipientName?: string | null;
+          };
+          clientCode: string;
+        }
       >();
       for (const row of list) {
         const clientKey = row.client?.id;
         if (!clientKey || byClient.has(clientKey)) continue;
-        const saved = row.client?.contactNumber ?? '';
-        const phone = getDraftPhone(clientKey, saved).trim();
-        if (phone === saved.trim()) continue;
+        const savedPhone =
+          persistedPhoneRef.current[clientKey] ??
+          row.client?.contactNumber ??
+          '';
+        const savedName =
+          persistedNameRef.current[clientKey] ??
+          row.client?.recipientName ??
+          '';
+        const phone = getDraftPhone(clientKey, savedPhone).trim();
+        const recipientName = getDraftRecipient(clientKey, savedName).trim();
+        const payload: {
+          contactNumber?: string | null;
+          recipientName?: string | null;
+        } = {};
+        if (phone !== savedPhone.trim()) payload.contactNumber = phone || null;
+        if (recipientName !== savedName.trim()) {
+          payload.recipientName = recipientName || null;
+        }
+        if (Object.keys(payload).length === 0) continue;
         byClient.set(clientKey, {
-          phone,
-          saved,
+          payload,
           clientCode: row.clientCode,
         });
       }
       return [...byClient.entries()];
     },
-    [getDraftPhone],
+    [getDraftPhone, getDraftRecipient],
   );
 
-  const handleSaveAllPhones = async (list: Filing[] = rows) => {
-    if (!canEditClient) return;
-    const dirty = collectDirtyPhones(list);
-    if (dirty.length === 0) {
-      toastSuccess('No mobile number changes to save');
-      return;
-    }
-
-    setSavingAllPhones(true);
-    let savedCount = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    try {
-      for (const [clientKey, item] of dirty) {
-        try {
-          await clientsApi.update(clientKey, {
-            contactNumber: item.phone || null,
-          });
-          phoneDraftsRef.current[clientKey] = item.phone;
-          savedCount += 1;
-        } catch (error) {
-          failed += 1;
-          errors.push(
-            `${item.clientCode}: ${getApiErrorMessage(error, 'Save failed')}`,
-          );
-        }
-      }
-
-      void queryClient.invalidateQueries({ queryKey: ['clients'] });
-      void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
-      setPhoneSyncKey((key) => key + 1);
-
-      if (failed === 0) {
-        toastSuccess(`Saved ${savedCount} mobile number(s)`);
-      } else if (savedCount > 0) {
-        toastSuccess(`Saved ${savedCount}. Failed ${failed}.`);
-        toastError(errors.slice(0, 3).join(' · '));
-      } else {
-        toastError(errors[0] || 'Could not save mobile numbers');
-      }
-    } finally {
-      setSavingAllPhones(false);
-    }
-  };
+  const rowContactState = useCallback(
+    (row: Filing) => {
+      const clientKey = row.client?.id;
+      const savedPhone = row.client?.contactNumber ?? '';
+      const savedName = row.client?.recipientName ?? '';
+      const phone = (
+        clientKey ? getDraftPhone(clientKey, savedPhone) : ''
+      ).trim();
+      const recipientName = (
+        clientKey ? getDraftRecipient(clientKey, savedName) : ''
+      ).trim();
+      return {
+        clientKey,
+        savedPhone,
+        savedName,
+        phone,
+        recipientName,
+        missingPhone: !phone,
+        missingRecipient: !recipientName,
+        incomplete: !phone || !recipientName,
+      };
+    },
+    [getDraftPhone, getDraftRecipient],
+  );
 
   const handleSend = async (row: Filing) => {
     if (!canSend) return;
-    const clientKey = row.client?.id;
-    const phone = (
-      clientKey
-        ? getDraftPhone(clientKey, row.client?.contactNumber ?? '')
-        : ''
-    ).trim();
+    const contact = rowContactState(row);
+    if (contact.incomplete) {
+      toastError('Add a recipient name and mobile number before sending.');
+      return;
+    }
+    if (contact.clientKey) {
+      commitPersist(contact.clientKey);
+      await persistQueueRef.current[contact.clientKey];
+    }
     setSendingFilingId(row.id);
     try {
       await sendWhatsAppMutation.mutateAsync({
         id: row.id,
         payload: {
-          phone: phone || undefined,
-          savePhone: Boolean(phone && clientKey),
+          phone: contact.phone || undefined,
+          savePhone: Boolean(contact.phone && contact.clientKey),
+          recipientName: contact.recipientName || undefined,
+          saveRecipientName: Boolean(contact.recipientName && contact.clientKey),
         },
       });
-      if (clientKey && phone) {
-        phoneDraftsRef.current[clientKey] = phone;
-        setPhoneSyncKey((key) => key + 1);
+      if (contact.clientKey) {
+        phoneDraftsRef.current[contact.clientKey] = contact.phone;
+        recipientDraftsRef.current[contact.clientKey] = contact.recipientName;
+        persistedPhoneRef.current[contact.clientKey] = contact.phone;
+        persistedNameRef.current[contact.clientKey] = contact.recipientName;
+        setContactSyncKey((key) => key + 1);
       }
     } finally {
       setSendingFilingId(null);
@@ -349,10 +460,20 @@ export function Form5WhatsAppPage() {
     [rows, selectedIds],
   );
 
-  const locationOptions = (locationsQuery.data ?? []).map((location) => ({
-    label: location.name,
-    value: location.id,
-  }));
+  const incompleteCount = useMemo(
+    () =>
+      rows.filter((row) => {
+        const contact = rowContactState(row);
+        const invalidPhone =
+          contact.phone.length > 0 && !isValidWhatsAppMobile(contact.phone);
+        return contact.incomplete || invalidPhone;
+      }).length,
+    [rows, rowContactState, contactSyncKey],
+  );
+
+  const locationOptions = locationOptionsFromClients(
+    clientsQuery.data?.clients,
+  );
   const clientOptions = (clientsQuery.data?.clients ?? []).map((client) => ({
     label: `${client.clientCode} · ${client.companyName}`,
     value: client.id,
@@ -432,23 +553,45 @@ export function Form5WhatsAppPage() {
       {
         id: 'phone',
         header: 'Mobile number',
-        width: 260,
-        minWidth: 220,
+        width: 148,
+        minWidth: 136,
         cell: (row) => {
-          const clientKey = row.client?.id;
-          if (!clientKey) return '—';
-          const saved = row.client?.contactNumber ?? '';
+          const contact = rowContactState(row);
+          if (!contact.clientKey) return '—';
           return (
-            <MobileNumberField
-              key={`${clientKey}-${phoneSyncKey}`}
-              clientId={clientKey}
-              draftValue={getDraftPhone(clientKey, saved)}
-              savedValue={saved}
+            <WhatsAppDraftField
+              key={`${contact.clientKey}-phone-${contactSyncKey}`}
+              clientId={contact.clientKey}
+              draftValue={getDraftPhone(contact.clientKey, contact.savedPhone)}
+              placeholder="10-digit mobile"
+              kind="phone"
               disabled={!canEditClient}
-              showSave
-              saving={savingClientId === clientKey}
-              onDraftChange={handleDraftChange}
-              onSave={handleSavePhone}
+              onDraftChange={handlePhoneDraftChange}
+              onCommit={commitPersist}
+            />
+          );
+        },
+      },
+      {
+        id: 'recipientName',
+        header: 'Recipient name',
+        width: 148,
+        minWidth: 136,
+        cell: (row) => {
+          const contact = rowContactState(row);
+          if (!contact.clientKey) return '—';
+          return (
+            <WhatsAppDraftField
+              key={`${contact.clientKey}-name-${contactSyncKey}`}
+              clientId={contact.clientKey}
+              draftValue={getDraftRecipient(
+                contact.clientKey,
+                contact.savedName,
+              )}
+              placeholder="Person who receives this"
+              disabled={!canEditClient}
+              onDraftChange={handleRecipientDraftChange}
+              onCommit={commitPersist}
             />
           );
         },
@@ -484,14 +627,16 @@ export function Form5WhatsAppPage() {
       somePageSelected,
       selectedIds,
       canEditClient,
-      phoneSyncKey,
-      savingClientId,
+      contactSyncKey,
       sendingFilingId,
       bulkSending,
       sendWhatsAppMutation.isPending,
       getDraftPhone,
-      handleDraftChange,
-      handleSavePhone,
+      getDraftRecipient,
+      handlePhoneDraftChange,
+      handleRecipientDraftChange,
+      commitPersist,
+      rowContactState,
     ],
   );
 
@@ -503,14 +648,34 @@ export function Form5WhatsAppPage() {
     const errors: string[] = [];
 
     try {
-      // Persist any edited numbers first, then send each selected filing.
-      const dirty = collectDirtyPhones(selectedRows);
+      const pendingClients = new Set<string>();
+      for (const row of selectedRows) {
+        const clientKey = row.client?.id;
+        if (clientKey) pendingClients.add(clientKey);
+      }
+      await Promise.all(
+        [...pendingClients].map((clientKey) => {
+          commitPersist(clientKey);
+          return persistQueueRef.current[clientKey] ?? Promise.resolve();
+        }),
+      );
+
+      // Persist any remaining dirty drafts, then send each selected filing.
+      const dirty = collectDirtyContacts(selectedRows);
       for (const [clientKey, item] of dirty) {
         try {
-          await clientsApi.update(clientKey, {
-            contactNumber: item.phone || null,
-          });
-          phoneDraftsRef.current[clientKey] = item.phone;
+          await clientsApi.update(clientKey, item.payload);
+          if (item.payload.contactNumber !== undefined) {
+            phoneDraftsRef.current[clientKey] = item.payload.contactNumber ?? '';
+            persistedPhoneRef.current[clientKey] =
+              item.payload.contactNumber ?? '';
+          }
+          if (item.payload.recipientName !== undefined) {
+            recipientDraftsRef.current[clientKey] =
+              item.payload.recipientName ?? '';
+            persistedNameRef.current[clientKey] =
+              item.payload.recipientName ?? '';
+          }
         } catch (error) {
           failed += 1;
           errors.push(
@@ -520,20 +685,30 @@ export function Form5WhatsAppPage() {
       }
 
       for (const row of selectedRows) {
-        const clientKey = row.client?.id;
-        const phone = (
-          clientKey
-            ? getDraftPhone(clientKey, row.client?.contactNumber ?? '')
-            : ''
-        ).trim();
+        const contact = rowContactState(row);
+        if (contact.incomplete) {
+          failed += 1;
+          errors.push(
+            `${row.clientCode}: Add a recipient name and mobile number`,
+          );
+          continue;
+        }
 
         try {
           await filingsApi.sendWhatsApp(row.id, {
-            phone: phone || undefined,
-            savePhone: Boolean(phone && clientKey),
+            phone: contact.phone || undefined,
+            savePhone: Boolean(contact.phone && contact.clientKey),
+            recipientName: contact.recipientName || undefined,
+            saveRecipientName: Boolean(
+              contact.recipientName && contact.clientKey,
+            ),
           });
-          if (clientKey && phone) {
-            phoneDraftsRef.current[clientKey] = phone;
+          if (contact.clientKey) {
+            phoneDraftsRef.current[contact.clientKey] = contact.phone;
+            recipientDraftsRef.current[contact.clientKey] =
+              contact.recipientName;
+            persistedPhoneRef.current[contact.clientKey] = contact.phone;
+            persistedNameRef.current[contact.clientKey] = contact.recipientName;
           }
           sent += 1;
         } catch (error) {
@@ -547,7 +722,7 @@ export function Form5WhatsAppPage() {
       void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: ['clients'] });
       void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
-      setPhoneSyncKey((key) => key + 1);
+      setContactSyncKey((key) => key + 1);
 
       if (failed === 0) {
         toastSuccess(`Saved & sent WhatsApp for ${sent} client(s)`);
@@ -568,7 +743,7 @@ export function Form5WhatsAppPage() {
     <div className="space-y-4">
       <PageHeader
         title="Form 5 WhatsApp"
-        description="Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Numbers are stored on the client master."
+        description="Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Recipient name and mobile number are stored on the client master."
         breadcrumbs={[
           { label: 'Home', href: PATHS.home },
           { label: 'Form 5', href: PATHS.form5 },
@@ -635,39 +810,25 @@ export function Form5WhatsAppPage() {
           setSelectedIds(new Set());
         }}
         headerActions={
-          <Button
-            type="button"
-            size="sm"
-            variant={recentlyAdded ? 'primary' : 'outline'}
-            aria-pressed={recentlyAdded}
-            onClick={() => {
-              const next = {
-                ...filters,
-                recentlyAdded: recentlyAdded ? '' : 'lastSheet',
-              };
-              setFilters(next);
-              setAppliedFilters(next);
-              setPage(1);
-              setSelectedIds(new Set());
-            }}
-          >
-            Recently added
-          </Button>
-        }
-        footer={
           <>
-            <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={rows.length === 0 || savingAllPhones || bulkSending}
-                loading={savingAllPhones}
-                onClick={() => void handleSaveAllPhones(rows)}
-              >
-                Save all
-              </Button>
-            </PermissionGate>
+            <Button
+              type="button"
+              size="sm"
+              variant={recentlyAdded ? 'primary' : 'outline'}
+              aria-pressed={recentlyAdded}
+              onClick={() => {
+                const next = {
+                  ...filters,
+                  recentlyAdded: recentlyAdded ? '' : 'lastSheet',
+                };
+                setFilters(next);
+                setAppliedFilters(next);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+            >
+              Recently added
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -679,6 +840,18 @@ export function Form5WhatsAppPage() {
           </>
         }
       />
+
+      {incompleteCount > 0 ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          {incompleteCount} client{incompleteCount === 1 ? '' : 's'} on this
+          page {incompleteCount === 1 ? 'is' : 'are'} missing a recipient name
+          or a valid mobile number. Highlighted fields need to be filled before
+          send.
+        </div>
+      ) : null}
 
       <DataTable
         columns={columns}
@@ -707,11 +880,14 @@ export function Form5WhatsAppPage() {
       <Modal
         open={previewOpen}
         onOpenChange={(open) => {
-          if (!bulkSending) setPreviewOpen(open);
+          if (!bulkSending) {
+            setPreviewOpen(open);
+            if (!open) setContactSyncKey((key) => key + 1);
+          }
         }}
         title="WhatsApp send preview"
-        description="Review clients and mobile numbers, then save changes and send all selected messages."
-        className="max-w-3xl"
+        description="Review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type."
+        className="max-w-5xl"
         closeOnOverlayClick={!bulkSending}
         footer={
           <>
@@ -730,7 +906,7 @@ export function Form5WhatsAppPage() {
                 loading={bulkSending}
                 onClick={() => void handleBulkSend()}
               >
-                Save & send all ({selectedRows.length})
+                Send all ({selectedRows.length})
               </Button>
             </PermissionGate>
           </>
@@ -742,18 +918,18 @@ export function Form5WhatsAppPage() {
           </p>
         ) : (
           <div className="max-h-[60vh] overflow-auto">
-            <table className="w-full min-w-[36rem] border-collapse text-sm">
+            <table className="w-full min-w-[48rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-2 py-2 font-medium">Client</th>
                   <th className="px-2 py-2 font-medium">Month</th>
                   <th className="px-2 py-2 font-medium">Mobile number</th>
+                  <th className="px-2 py-2 font-medium">Recipient name</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedRows.map((row) => {
-                  const clientKey = row.client?.id;
-                  const saved = row.client?.contactNumber ?? '';
+                  const contact = rowContactState(row);
                   const company =
                     row.client?.companyName || row.clientCode || '—';
                   return (
@@ -771,18 +947,37 @@ export function Form5WhatsAppPage() {
                         {row.periodLabel || row.period}
                       </td>
                       <td className="px-2 py-2">
-                        {clientKey ? (
-                          <MobileNumberField
-                            key={`${clientKey}-preview-${phoneSyncKey}`}
-                            clientId={clientKey}
-                            draftValue={getDraftPhone(clientKey, saved)}
-                            savedValue={saved}
+                        {contact.clientKey ? (
+                          <WhatsAppDraftField
+                            key={`${contact.clientKey}-preview-phone-${contactSyncKey}`}
+                            clientId={contact.clientKey}
+                            draftValue={getDraftPhone(
+                              contact.clientKey,
+                              contact.savedPhone,
+                            )}
+                            placeholder="10-digit mobile"
+                            kind="phone"
                             disabled={!canEditClient || bulkSending}
-                            showSave={canEditClient}
-                            saving={savingClientId === clientKey}
-                            onDraftChange={handleDraftChange}
-                            onSave={handleSavePhone}
-                            compact
+                            onDraftChange={handlePhoneDraftChange}
+                            onCommit={commitPersist}
+                          />
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {contact.clientKey ? (
+                          <WhatsAppDraftField
+                            key={`${contact.clientKey}-preview-name-${contactSyncKey}`}
+                            clientId={contact.clientKey}
+                            draftValue={getDraftRecipient(
+                              contact.clientKey,
+                              contact.savedName,
+                            )}
+                            placeholder="Person who receives this"
+                            disabled={!canEditClient || bulkSending}
+                            onDraftChange={handleRecipientDraftChange}
+                            onCommit={commitPersist}
                           />
                         ) : (
                           '—'

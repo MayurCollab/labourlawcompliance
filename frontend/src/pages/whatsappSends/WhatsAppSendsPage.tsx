@@ -4,7 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog';
-import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
+import { FilterPanel, filterIds, locationOptionsFromClients, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Input } from '@/components/inputs/Input';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -17,7 +17,7 @@ import {
   type DataTableSort,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
-import { useClientOptionsQuery, useLocationsQuery } from '@/hooks/useClients';
+import { useClientOptionsQuery } from '@/hooks/useClients';
 import { usePermission } from '@/hooks/usePermission';
 import {
   useDeleteWhatsAppSendMutation,
@@ -100,7 +100,6 @@ export function WhatsAppSendsPage() {
   const [pendingDelete, setPendingDelete] = useState<WhatsAppSend | null>(null);
 
   const optionsQuery = useClientOptionsQuery();
-  const locationsQuery = useLocationsQuery();
   const locationIds = filterIds(appliedFilters.locationIds);
   const clientIds = filterIds(appliedFilters.clientIds);
   const statusValue =
@@ -237,19 +236,9 @@ export function WhatsAppSendsPage() {
     label: `${client.clientCode} · ${client.companyName}`,
     value: client.id,
   }));
-  const clientLocationNames = new Set(
-    (optionsQuery.data?.clients ?? [])
-      .map((client) => client.locationName?.trim().toLowerCase())
-      .filter((name): name is string => Boolean(name)),
+  const locationOptions = locationOptionsFromClients(
+    optionsQuery.data?.clients,
   );
-  const locationOptions = (locationsQuery.data ?? [])
-    .filter((location) =>
-      clientLocationNames.has(location.name.trim().toLowerCase()),
-    )
-    .map((location) => ({
-      label: location.name,
-      value: location.id,
-    }));
 
   return (
     <div className="space-y-4">

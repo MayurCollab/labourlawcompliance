@@ -66,6 +66,7 @@ const toPayload = (values: ClientFormValues): ClientPayload => ({
   address: emptyToNull(values.address),
   rcNumber: emptyToNull(values.rcNumber),
   contactNumber: emptyToNull(values.contactNumber),
+  recipientName: emptyToNull(values.recipientName),
   fundCode: emptyToNull(values.fundCode),
   phyCode: emptyToNull(values.phyCode),
   status: emptyToNull(values.status),

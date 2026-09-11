@@ -89,4 +89,6 @@ export const listPtMismatchesQuerySchema = z
 export const sendFilingWhatsAppSchema = z.object({
   phone: z.string().trim().max(32).optional(),
   savePhone: z.boolean().optional(),
+  recipientName: z.string().trim().max(120).optional(),
+  saveRecipientName: z.boolean().optional(),
 });

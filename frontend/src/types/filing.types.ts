@@ -8,6 +8,7 @@ export type FilingClientRef = {
   address?: string | null;
   signatoryName?: string | null;
   contactNumber?: string | null;
+  recipientName?: string | null;
 };
 
 export type FilingSlabRow = {
@@ -175,6 +176,8 @@ export type BulkGeneratePayload = {
 export type SendFilingWhatsAppPayload = {
   phone?: string;
   savePhone?: boolean;
+  recipientName?: string;
+  saveRecipientName?: boolean;
 };
 
 export type SendFilingWhatsAppResult = {

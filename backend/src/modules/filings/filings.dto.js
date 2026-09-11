@@ -120,6 +120,7 @@ export const toFilingDto = (filing, extras = {}) => ({
         address: filing.client.address ?? null,
         signatoryName: filing.client.signatoryName ?? null,
         contactNumber: filing.client.contactNumber ?? null,
+        recipientName: filing.client.recipientName ?? null,
       }
     : null,
   clientCode: filing.clientCode,

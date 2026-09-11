@@ -25,6 +25,7 @@ export type Client = {
   address: string | null;
   rcNumber: string | null;
   contactNumber: string | null;
+  recipientName: string | null;
   fundCode: string | null;
   phyCode: string | null;
   status: string | null;
@@ -64,6 +65,7 @@ export type ClientPayload = {
   address?: string | null;
   rcNumber?: string | null;
   contactNumber?: string | null;
+  recipientName?: string | null;
   fundCode?: string | null;
   phyCode?: string | null;
   status?: string | null;
@@ -79,6 +81,7 @@ export type ClientOption = {
   companyName: string;
   phyCode: string | null;
   fundCode: string | null;
+  locationId: string | null;
   locationName: string | null;
 };
 

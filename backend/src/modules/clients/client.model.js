@@ -55,6 +55,12 @@ const clientSchema = new mongoose.Schema({
     default: null,
     maxlength: [32, 'Contact number cannot exceed 32 characters'],
   },
+  recipientName: {
+    type: String,
+    trim: true,
+    default: null,
+    maxlength: [120, 'Recipient name cannot exceed 120 characters'],
+  },
   fundCode: {
     type: String,
     trim: true,

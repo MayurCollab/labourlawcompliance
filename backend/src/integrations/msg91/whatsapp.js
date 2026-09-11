@@ -9,7 +9,7 @@ import logger from '../../utils/logger.js';
  *   phone: string,
  *   filename: string,
  *   mediaUrl: string,
- *   companyName: string,
+ *   recipientName: string,
  *   monthName: string,
  *   year: string,
  * }} params
@@ -18,7 +18,7 @@ export const sendForm5WhatsAppTemplate = async ({
   phone,
   filename,
   mediaUrl,
-  companyName,
+  recipientName,
   monthName,
   year,
 }) => {
@@ -61,7 +61,7 @@ export const sendForm5WhatsAppTemplate = async ({
               },
               body_1: {
                 type: 'text',
-                value: companyName || '',
+                value: recipientName || '',
               },
               body_2: {
                 type: 'text',
