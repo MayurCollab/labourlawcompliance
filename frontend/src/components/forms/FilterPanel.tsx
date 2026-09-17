@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 export type FilterFieldType =
   | 'text'
   | 'select'
+  | 'buttonGroup'
   | 'multiSelect'
   | 'checkbox'
   | 'date';
@@ -22,6 +23,8 @@ export type FilterFieldConfig = {
   placeholder?: string;
   searchPlaceholder?: string;
   options?: SelectOption[];
+  /** Extra width hint for dense toolbars. */
+  className?: string;
 };
 
 export type FilterValue = string | boolean | string[] | undefined;
@@ -38,6 +41,8 @@ export type FilterPanelProps = {
   title?: ReactNode;
   /** Optional actions next to Reset (e.g. toggle filters). */
   headerActions?: ReactNode;
+  /** Controls rendered before the configured fields (e.g. SearchBox + month). */
+  leading?: ReactNode;
   /** Optional actions row under the fields (right-aligned, full width). */
   footer?: ReactNode;
   className?: string;
@@ -49,9 +54,12 @@ const asStringArray = (value: FilterValue): string[] => {
   return [];
 };
 
+const fieldShell = (className?: string) =>
+  cn('min-w-[10rem] flex-1 basis-[10rem] sm:max-w-xs', className);
+
 /**
- * Generic filter panel driven by a field config array.
- * Changes apply immediately when `onApply` is provided.
+ * Compact filter toolbar used across list pages.
+ * Prefer putting SearchBox (and month/period) in `leading`.
  */
 export function FilterPanel({
   fields,
@@ -61,6 +69,7 @@ export function FilterPanel({
   onReset,
   title = 'Filters',
   headerActions,
+  leading,
   footer,
   className,
 }: FilterPanelProps) {
@@ -70,97 +79,160 @@ export function FilterPanel({
     onApply?.(next);
   };
 
+  const fieldNodes = fields.map((field) => {
+    if (field.type === 'multiSelect') {
+      return (
+        <MultiSelect
+          key={field.key}
+          label={field.label}
+          options={field.options ?? []}
+          placeholder={field.placeholder}
+          searchPlaceholder={field.searchPlaceholder ?? 'Search…'}
+          value={asStringArray(values[field.key])}
+          onChange={(next) => setValue(field.key, next)}
+          containerClassName={fieldShell(field.className)}
+        />
+      );
+    }
+
+    if (field.type === 'select') {
+      return (
+        <Select
+          key={field.key}
+          label={field.label}
+          options={field.options ?? []}
+          placeholder={field.placeholder}
+          value={String(values[field.key] ?? '')}
+          onChange={(event) => setValue(field.key, event.target.value)}
+          containerClassName={fieldShell(field.className)}
+        />
+      );
+    }
+
+    if (field.type === 'buttonGroup') {
+      const current = String(values[field.key] ?? '');
+      const options = [
+        ...(field.placeholder
+          ? [{ label: field.placeholder, value: '' }]
+          : []),
+        ...(field.options ?? []),
+      ];
+
+      return (
+        <div
+          key={field.key}
+          className={cn(
+            'min-w-[12rem] flex-1 basis-[12rem] space-y-1 sm:max-w-none',
+            field.className,
+          )}
+        >
+          <p className="text-xs font-medium text-muted-foreground">
+            {field.label}
+          </p>
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label={field.label}
+          >
+            {options.map((option) => {
+              const selected = current === option.value;
+              return (
+                <Button
+                  key={`${field.key}-${option.value || 'any'}`}
+                  type="button"
+                  size="sm"
+                  variant={selected ? 'primary' : 'outline'}
+                  aria-pressed={selected}
+                  onClick={() => setValue(field.key, option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    if (field.type === 'checkbox') {
+      return (
+        <Checkbox
+          key={field.key}
+          label={field.label}
+          checked={Boolean(values[field.key])}
+          onChange={(event) => setValue(field.key, event.target.checked)}
+          containerClassName={fieldShell(field.className)}
+        />
+      );
+    }
+
+    if (field.type === 'date') {
+      return (
+        <DatePicker
+          key={field.key}
+          label={field.label}
+          value={String(values[field.key] ?? '')}
+          onChange={(event) => setValue(field.key, event.target.value)}
+          containerClassName={fieldShell(field.className)}
+        />
+      );
+    }
+
+    return (
+      <Input
+        key={field.key}
+        label={field.label}
+        placeholder={field.placeholder}
+        value={String(values[field.key] ?? '')}
+        onChange={(event) => setValue(field.key, event.target.value)}
+        containerClassName={fieldShell(field.className)}
+      />
+    );
+  });
+
   return (
     <div
       className={cn(
-        'space-y-3 rounded-xl border border-border/80 bg-card/90 p-4 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm',
+        'rounded-lg border border-border/80 bg-card/90 px-2.5 py-2 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm',
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {headerActions || onReset ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {headerActions}
-            {onReset ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onReset}>
-                Reset
-              </Button>
-            ) : null}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-h-8 shrink-0 items-center">
+          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            {title}
+          </h3>
+        </div>
+
+        {leading ? (
+          <div className="flex min-w-0 flex-wrap items-end gap-2">
+            {leading}
           </div>
+        ) : null}
+
+        {fieldNodes}
+
+        {headerActions ? (
+          <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
+            {headerActions}
+          </div>
+        ) : null}
+
+        {onReset ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={onReset}
+          >
+            Reset
+          </Button>
         ) : null}
       </div>
 
-      <div
-        className={cn(
-          'grid items-end gap-3 sm:grid-cols-2',
-          fields.length >= 3 && 'lg:grid-cols-3',
-        )}
-      >
-        {fields.map((field) => {
-          if (field.type === 'multiSelect') {
-            return (
-              <MultiSelect
-                key={field.key}
-                label={field.label}
-                options={field.options ?? []}
-                placeholder={field.placeholder}
-                searchPlaceholder={field.searchPlaceholder ?? 'Search…'}
-                value={asStringArray(values[field.key])}
-                onChange={(next) => setValue(field.key, next)}
-              />
-            );
-          }
-
-          if (field.type === 'select') {
-            return (
-              <Select
-                key={field.key}
-                label={field.label}
-                options={field.options ?? []}
-                placeholder={field.placeholder}
-                value={String(values[field.key] ?? '')}
-                onChange={(event) => setValue(field.key, event.target.value)}
-              />
-            );
-          }
-
-          if (field.type === 'checkbox') {
-            return (
-              <Checkbox
-                key={field.key}
-                label={field.label}
-                checked={Boolean(values[field.key])}
-                onChange={(event) => setValue(field.key, event.target.checked)}
-              />
-            );
-          }
-
-          if (field.type === 'date') {
-            return (
-              <DatePicker
-                key={field.key}
-                label={field.label}
-                value={String(values[field.key] ?? '')}
-                onChange={(event) => setValue(field.key, event.target.value)}
-              />
-            );
-          }
-
-          return (
-            <Input
-              key={field.key}
-              label={field.label}
-              placeholder={field.placeholder}
-              value={String(values[field.key] ?? '')}
-              onChange={(event) => setValue(field.key, event.target.value)}
-            />
-          );
-        })}
-      </div>
-
       {footer ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-2">
           {footer}
         </div>
       ) : null}

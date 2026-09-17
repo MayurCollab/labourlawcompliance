@@ -71,6 +71,7 @@ const buildClientListFilter = ({ search, locationId, locationIds, fundCode }) =>
       { companyName: regex },
       { rcNumber: regex },
       { fundCode: regex },
+      { recipientName: regex },
     ];
   }
   const locations = normalizeIdList(locationIds, locationId);
@@ -377,6 +378,7 @@ export const prepareMasterClientUpsert = async (fields, actorId, cache = null) =
       location: location.id || location._id,
       rcNumber: blankToNull(fields.rcNumber) ?? null,
       contactNumber: blankToNull(fields.contactNumber) ?? null,
+      recipientName: blankToNull(fields.recipientName) ?? null,
       fundCode: blankToNull(fields.fundCode) ?? null,
       phyCode:
         blankToNull(fields.phyCode) || extractPhyCode(companyName) || null,
@@ -416,6 +418,7 @@ export const prepareMasterClientUpsert = async (fields, actorId, cache = null) =
     'draftName',
     'rcNumber',
     'contactNumber',
+    'recipientName',
     'fundCode',
     'status',
     'address',

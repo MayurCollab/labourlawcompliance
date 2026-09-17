@@ -29,9 +29,9 @@ const salaryRow = (
   name,
   extra.location ?? 'Anand',
   extra.state ?? 'Gujarat',
-  extra.ptGross ?? 12478,
+  extra.ptGross === undefined ? 12478 : extra.ptGross,
   phy,
-  extra.pTax ?? 200,
+  extra.pTax === undefined ? 200 : extra.pTax,
 ];
 
 describe('Salary ingest upsert', () => {

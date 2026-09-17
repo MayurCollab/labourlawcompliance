@@ -4,12 +4,13 @@ import {
   autoMapColumns,
   countDataRows,
   extractPeriodFromText,
-  getMappedValue,
+  mappedCellsForRow,
   normalizeHeader,
   parsePeriod,
   readWorkbookSheets,
   rowHasAnyValue,
   stringifyCell,
+  toFieldMeta,
   toHeaders,
 } from './masterParse.js';
 
@@ -27,11 +28,36 @@ export const SALARY_FIELDS = Object.freeze([
     required: false,
   },
   {
+    key: 'clientCode',
+    label: 'ClientID',
+    aliases: [
+      'clientid',
+      'client id',
+      'client',
+      'client code',
+      'clientno',
+      'client no',
+      'client number',
+    ],
+    group: 'employee',
+    required: false,
+    preview: true,
+  },
+  {
+    key: 'companyName',
+    label: 'Company Name',
+    aliases: ['company name', 'name of company'],
+    group: 'employee',
+    required: false,
+    preview: true,
+  },
+  {
     key: 'employeeNo',
     label: 'EMPNO',
     aliases: ['empno', 'emp no', 'employee no', 'employee number'],
     group: 'employee',
     required: true,
+    preview: true,
   },
   {
     key: 'employeeName',
@@ -39,6 +65,8 @@ export const SALARY_FIELDS = Object.freeze([
     aliases: ['emp name', 'employee name', 'name'],
     group: 'employee',
     required: false,
+    preview: true,
+    previewLabel: 'Employee name',
   },
   {
     key: 'locationName',
@@ -46,6 +74,8 @@ export const SALARY_FIELDS = Object.freeze([
     aliases: ['location'],
     group: 'employee',
     required: false,
+    preview: true,
+    previewLabel: 'Location',
   },
   {
     key: 'state',
@@ -53,6 +83,9 @@ export const SALARY_FIELDS = Object.freeze([
     aliases: ['state'],
     group: 'employee',
     required: false,
+    preview: true,
+    previewLabel: 'State',
+    defaultValue: 'Gujarat',
   },
   {
     key: 'ptGross',
@@ -69,30 +102,19 @@ export const SALARY_FIELDS = Object.freeze([
     required: false,
   },
   {
-    key: 'clientCode',
-    label: 'Client code',
-    aliases: ['client', 'client code', 'clientno', 'client no', 'client number'],
-    group: 'employee',
-    required: false,
-  },
-  {
     key: 'pTax',
     label: 'P_TAX',
     aliases: ['p tax', 'ptax', 'pt tax'],
     group: 'employee',
     required: false,
+    preview: true,
+    previewLabel: 'P.tax',
   },
 ]);
 
 export const SALARY_REQUIRED_KEYS = Object.freeze(['employeeNo']);
 
-const fieldMeta = () =>
-  SALARY_FIELDS.map(({ key, label, required, group }) => ({
-    key,
-    label,
-    required,
-    group,
-  }));
+const fieldMeta = () => toFieldMeta(SALARY_FIELDS);
 
 export const looksLikeSalaryHeader = (cells) => {
   const labels = new Set((cells || []).map(normalizeHeader).filter(Boolean));
@@ -140,14 +162,10 @@ export const pickSalarySheet = (sheetNames, sheets) => {
   return output || sheetNames[0] || null;
 };
 
-const mappedPreviewRow = (row, mapping, excelRow) => {
-  const cells = {};
-  for (const field of SALARY_FIELDS) {
-    const raw = getMappedValue(row, mapping, field.key);
-    cells[field.key] = raw === undefined ? '' : stringifyCell(raw);
-  }
-  return { excelRow, cells };
-};
+const mappedPreviewRow = (row, mapping, excelRow) => ({
+  excelRow,
+  cells: mappedCellsForRow(row, mapping, SALARY_FIELDS),
+});
 
 const emptyParse = (sheetName, warnings) => ({
   sheetName,

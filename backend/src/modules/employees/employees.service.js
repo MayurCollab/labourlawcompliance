@@ -198,7 +198,7 @@ export const prepareSalaryUpsert = ({
     {
       phyCode: fields.phyCode,
       clientCode: fields.clientCode,
-      companyName,
+      companyName: companyName || fields.companyName || '',
     },
     cache?.clientsByCode ?? null,
   );
@@ -227,7 +227,7 @@ export const prepareSalaryUpsert = ({
     period,
     periodLabel: blankToNull(periodLabel) ?? null,
     locationName: blankToNull(fields.locationName) ?? null,
-    state: blankToNull(fields.state) ?? null,
+    state: blankToNull(fields.state) ?? 'Gujarat',
     ptGross,
     pTax,
     unmatched,

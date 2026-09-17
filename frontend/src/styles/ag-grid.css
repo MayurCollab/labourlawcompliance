@@ -21,15 +21,15 @@
   --ag-checkbox-checked-color: var(--primary);
   --ag-checkbox-unchecked-color: var(--muted-foreground);
   --ag-accent-color: var(--primary);
-  --ag-cell-horizontal-padding: 1rem;
-  --ag-header-height: 2.75rem;
-  --ag-row-height: 3rem;
+  --ag-cell-horizontal-padding: 0.625rem;
+  --ag-header-height: 2.125rem;
+  --ag-row-height: 2.25rem;
   --ag-wrapper-border-radius: calc(var(--radius) + 4px);
   --ag-card-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent);
 
   width: 100%;
-  min-width: 640px;
-  overflow: visible;
+  min-width: 0;
+  overflow: hidden;
   transition: box-shadow 180ms ease, border-color 180ms ease;
 }
 
@@ -44,25 +44,34 @@
   border-radius: calc(var(--radius) + 4px);
   background: var(--card);
   box-shadow: var(--ag-card-shadow);
-  overflow: visible;
+  overflow: hidden;
+}
+
+.llc-ag-grid-shell--scroll .llc-ag-grid .ag-root-wrapper {
+  height: 100%;
 }
 
 .llc-ag-grid .ag-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   font-size: 0.75rem;
+  background: var(--ag-header-background-color);
 }
 
 .llc-ag-grid .ag-header-cell,
 .llc-ag-grid .ag-cell {
   display: flex;
   align-items: center;
+  line-height: 1.25;
 }
 
 .llc-ag-grid .ag-header-cell-label {
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
 .llc-ag-grid .ag-header-cell:hover {
@@ -84,13 +93,36 @@
 }
 
 .llc-ag-grid .ag-cell {
-  line-height: 1.35;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .llc-ag-grid .ag-cell-wrapper {
   width: 100%;
-  overflow: visible;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.llc-ag-grid .ag-cell-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.llc-ag-grid .llc-ag-cell-multiline,
+.llc-ag-grid .llc-ag-cell-multiline .ag-cell-wrapper,
+.llc-ag-grid .llc-ag-cell-multiline .ag-cell-value {
+  overflow: visible !important;
+  white-space: normal !important;
+  text-overflow: unset !important;
+  height: auto !important;
+  align-items: flex-start;
+  line-height: 1.25;
+}
+
+.llc-ag-grid .llc-ag-cell-multiline {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
 }
 
 .llc-ag-grid .llc-ag-actions-cell,
@@ -98,15 +130,7 @@
 .llc-ag-grid .llc-ag-actions-cell .ag-cell-value {
   overflow: visible !important;
   justify-content: flex-end;
-}
-
-.llc-ag-grid .ag-center-cols-clipper,
-.llc-ag-grid .ag-center-cols-viewport,
-.llc-ag-grid .ag-body-viewport,
-.llc-ag-grid .ag-body,
-.llc-ag-grid .ag-center-cols-container,
-.llc-ag-grid .ag-row {
-  overflow: visible !important;
+  white-space: normal;
 }
 
 .llc-ag-grid .ag-sort-indicator-icon {
@@ -170,6 +194,36 @@
   box-shadow: 0 8px 24px color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
+/* Internal body scroll — AG Grid keeps the header pinned while rows move. */
+.llc-ag-grid-shell--scroll {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+
+.llc-ag-grid-shell--scroll .llc-ag-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* AG Grid React wraps the viewport in nested unstyled divs. Without this
+   chain, `height: 100%` on `.ag-root-wrapper` resolves to 0 and rows vanish. */
+.llc-ag-grid-shell--scroll .llc-ag-grid > div,
+.llc-ag-grid-shell--scroll .llc-ag-grid > div > div,
+.llc-ag-grid-shell--scroll .llc-ag-grid > div > div > div,
+.llc-ag-grid-shell--scroll .llc-ag-grid > div > div > div > div {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Dedicated loading skeleton (replaces faint AG overlay) */
 .llc-ag-loading {
   min-height: 280px;
@@ -180,20 +234,20 @@
 
 .llc-ag-loading__header {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: center;
-  min-height: 2.75rem;
-  padding: 0.75rem 1rem;
+  min-height: 2.125rem;
+  padding: 0.4rem 0.75rem;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklch, var(--primary) 8%, var(--muted));
 }
 
 .llc-ag-loading__row {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: center;
-  min-height: 3rem;
-  padding: 0.75rem 1rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.75rem;
   border-bottom: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
 }
 

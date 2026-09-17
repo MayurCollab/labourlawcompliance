@@ -75,4 +75,51 @@ describe('salaryParse', () => {
     expect(parsed.previewRows[0].cells.employeeNo).toBe('E1001');
     expect(parsed.warnings).toEqual([]);
   });
+
+  test('auto-maps ClientID and Company Name and defaults blank STATE to Gujarat', async () => {
+    const XLSX = await import('xlsx');
+    const aoa = [
+      ['Salary Sheet July-26'],
+      [
+        'SRNO',
+        'ClientID',
+        'Company Name',
+        'EMPNO',
+        'EMP_NAME',
+        'LOCATION',
+        'STATE',
+        'PHY_CODE',
+        'PT GROSS',
+        'P_TAX',
+        'Mapping',
+      ],
+      [
+        1,
+        'C0001',
+        'Acer India Pvt. Ltd.',
+        'E1001',
+        'Asha Shah',
+        'Anand',
+        '',
+        '0083',
+        12478,
+        200,
+        '',
+      ],
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'OutPut');
+    const parsed = parseSalaryWorkbook(
+      XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }),
+      null,
+      'Salary Sheet July-26.xlsx',
+    );
+
+    expect(parsed.mapping.clientCode).toBe(1);
+    expect(parsed.mapping.companyName).toBe(2);
+    expect(parsed.mapping.employeeNo).toBe(3);
+    expect(parsed.previewRows[0].cells.clientCode).toBe('C0001');
+    expect(parsed.previewRows[0].cells.companyName).toBe('Acer India Pvt. Ltd.');
+    expect(parsed.previewRows[0].cells.state).toBe('Gujarat');
+  });
 });

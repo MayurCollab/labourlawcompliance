@@ -22,19 +22,21 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn('mb-6 space-y-3', className)}>
+    <div className={cn('mb-3 space-y-1.5', className)}>
       {breadcrumbs && breadcrumbs.length > 0 ? (
         <Breadcrumb items={breadcrumbs} />
       ) : null}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 space-y-0.5">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             <span className="bg-gradient-to-r from-foreground to-primary bg-clip-text text-transparent">
               {title}
             </span>
           </h1>
           {description ? (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="max-w-3xl text-xs text-muted-foreground sm:text-sm">
+              {description}
+            </p>
           ) : null}
         </div>
         {actions ? (

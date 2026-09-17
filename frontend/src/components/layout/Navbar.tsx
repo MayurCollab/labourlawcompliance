@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { KeyRound, LogOut, Moon, Sun } from 'lucide-react';
+import { KeyRound, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { Avatar } from '@/components/common/Avatar';
@@ -16,6 +16,9 @@ export type NavbarProps = {
   className?: string;
   showThemeToggle?: boolean;
   showUserMenu?: boolean;
+  /** When set with onToggleSidebar, shows the menu control for sidebar min/max. */
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
 };
 
 /**
@@ -28,6 +31,8 @@ export function Navbar({
   className,
   showThemeToggle = true,
   showUserMenu = true,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: NavbarProps) {
   const { user, logout, isLoggingOut } = useAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -41,13 +46,31 @@ export function Navbar({
         className,
       )}
     >
-      <div className="min-w-0">
-        {title ?? (
-          <>
-            <p className="text-sm text-muted-foreground">Signed in as</p>
-            <p className="truncate text-sm font-medium">{user?.name ?? '—'}</p>
-          </>
-        )}
+      <div className="flex min-w-0 items-center gap-3">
+        {onToggleSidebar ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            aria-label={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
+            aria-pressed={sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Menu className="size-5" aria-hidden />
+          </Button>
+        ) : null}
+
+        <div className="min-w-0">
+          {title ?? (
+            <>
+              <p className="text-sm text-muted-foreground">Signed in as</p>
+              <p className="truncate text-sm font-medium">{user?.name ?? '—'}</p>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">

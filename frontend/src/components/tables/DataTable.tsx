@@ -1,19 +1,34 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ModuleRegistry,
   AllCommunityModule,
   type ColDef,
+  type GridApi,
+  type GridReadyEvent,
   type ICellRendererParams,
   type IHeaderParams,
   type SortDirection as AgSortDirection,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Columns3,
+  Maximize2,
+  Minimize2,
+  StretchHorizontal,
+} from 'lucide-react';
 
+import { Button } from '@/components/buttons/Button';
 import { EmptyState } from '@/components/common/EmptyState';
 import { appAgGridTheme } from '@/components/tables/agGridTheme';
 import { DataTableLoading } from '@/components/tables/DataTableLoading';
@@ -38,6 +53,8 @@ export type DataTableColumn<T> = {
   width?: number;
   minWidth?: number;
   maxWidth?: number;
+  /** Allow stacked content without clipping (Generated file, Role name, etc.). */
+  multiline?: boolean;
 };
 
 export type DataTableSort = {
@@ -51,6 +68,11 @@ export type DataTablePagination = {
   total: number;
   totalPages: number;
 };
+
+/** `'auto'` = grow with rows (no internal sticky header). */
+export type DataTableGridHeight = number | string | 'auto';
+
+export type DataTableColumnSizing = 'fit' | 'content';
 
 export type DataTableProps<T> = {
   columns: DataTableColumn<T>[];
@@ -67,9 +89,18 @@ export type DataTableProps<T> = {
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
-  /** Cap the grid body height so the table can shrink; pagination stays outside. */
-  gridMaxHeight?: number | string;
+  /**
+   * Cap grid body height so the header stays sticky while rows scroll.
+   * Omit on paginated lists to use a default viewport; `'auto'` grows with rows.
+   */
+  gridMaxHeight?: DataTableGridHeight;
+  /** Hide the fit-width / fit-content toolbar button. */
+  hideColumnSizing?: boolean;
+  /** Show Maximize / Minimize so the table can open full screen (Escape exits). */
+  fullscreenTitle?: ReactNode;
 };
+
+const DEFAULT_STICKY_HEIGHT = 'calc(100dvh - 13rem)';
 
 const getValue = <T,>(row: T, key?: string): ReactNode => {
   if (!key) return null;
@@ -160,7 +191,29 @@ export function DataTable<T>({
   emptyDescription = 'Try adjusting filters or create a new record.',
   className,
   gridMaxHeight,
+  hideColumnSizing = false,
+  fullscreenTitle,
 }: DataTableProps<T>) {
+  const gridApiRef = useRef<GridApi<T> | null>(null);
+  const [columnSizing, setColumnSizing] =
+    useState<DataTableColumnSizing>('fit');
+  const [maximized, setMaximized] = useState(false);
+  const inFullscreen = Boolean(fullscreenTitle) && maximized;
+  const activeGridMaxHeight = inFullscreen ? '100%' : gridMaxHeight;
+
+  const useAutoHeight =
+    activeGridMaxHeight === 'auto' ||
+    (activeGridMaxHeight == null && pagination == null);
+
+  const resolvedHeight: number | string | undefined = useAutoHeight
+    ? undefined
+    : activeGridMaxHeight == null
+      ? DEFAULT_STICKY_HEIGHT
+      : activeGridMaxHeight;
+
+  const fillParentHeight = !useAutoHeight && activeGridMaxHeight === '100%';
+  const stickyViewport = !useAutoHeight && activeGridMaxHeight == null;
+
   const columnDefs = useMemo<ColDef<T>[]>(
     () =>
       columns.map((column) => {
@@ -170,8 +223,9 @@ export function DataTable<T>({
 
         const isActions = column.id === 'actions';
         const isSelect = column.id === 'select';
-        const defaultMinWidth = isActions ? 168 : isSelect ? 52 : 120;
+        const defaultMinWidth = isActions ? 168 : isSelect ? 52 : 96;
         const defaultWidth = isActions ? 180 : isSelect ? 56 : undefined;
+        const fixedWidth = Boolean(isActions || isSelect || column.width);
 
         const def: ColDef<T> = {
           colId: column.id,
@@ -180,15 +234,19 @@ export function DataTable<T>({
           suppressHeaderMenuButton: true,
           suppressMovable: true,
           resizable: true,
-          flex: isActions || isSelect || column.width ? 0 : 1,
+          // Fit-width mode stretches; fit-content clears flex via applyColumnSizing.
+          flex: fixedWidth ? 0 : columnSizing === 'fit' ? 1 : 0,
           minWidth: column.minWidth ?? defaultMinWidth,
           maxWidth: column.maxWidth,
           width: column.width ?? defaultWidth,
           sort: sortDir,
+          wrapText: Boolean(column.multiline),
+          autoHeight: Boolean(column.multiline),
           headerClass: cn(column.headerClassName),
           cellClass: cn(
             column.className,
             isActions && 'llc-ag-actions-cell',
+            column.multiline && 'llc-ag-cell-multiline',
           ),
           headerComponent: SortHeader,
           headerComponentParams: {
@@ -212,13 +270,60 @@ export function DataTable<T>({
 
         return def;
       }),
-    [columns, onSortChange, sort],
+    [columnSizing, columns, onSortChange, sort],
+  );
+
+  const applyColumnSizing = useCallback(
+    (api: GridApi<T> | null | undefined, mode: DataTableColumnSizing) => {
+      if (!api || (typeof api.isDestroyed === 'function' && api.isDestroyed())) {
+        return;
+      }
+
+      if (mode === 'content') {
+        api.autoSizeAllColumns({ skipHeader: false });
+        return;
+      }
+
+      api.sizeColumnsToFit({
+        defaultMinWidth: 72,
+      });
+    },
+    [],
   );
 
   const getRowId = useCallback(
     (params: { data: T }) => rowKey(params.data),
     [rowKey],
   );
+
+  const onGridReady = useCallback(
+    (event: GridReadyEvent<T>) => {
+      gridApiRef.current = event.api;
+      applyColumnSizing(event.api, columnSizing);
+    },
+    [applyColumnSizing, columnSizing],
+  );
+
+  useEffect(() => {
+    applyColumnSizing(gridApiRef.current, columnSizing);
+  }, [applyColumnSizing, columnSizing, columns, data]);
+
+  useEffect(() => {
+    if (!inFullscreen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMaximized(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [inFullscreen]);
 
   const resolvedPageSize =
     pageSizeSelection ??
@@ -229,6 +334,53 @@ export function DataTable<T>({
   const loadingLabels = columns.map((column) =>
     typeof column.header === 'string' ? column.header : column.id,
   );
+
+  const sizingToggle =
+    !hideColumnSizing && !loading ? (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          variant={columnSizing === 'fit' ? 'primary' : 'outline'}
+          aria-pressed={columnSizing === 'fit'}
+          leftIcon={<StretchHorizontal className="size-3.5" />}
+          onClick={() => setColumnSizing('fit')}
+        >
+          Fit width
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={columnSizing === 'content' ? 'primary' : 'outline'}
+          aria-pressed={columnSizing === 'content'}
+          leftIcon={<Columns3 className="size-3.5" />}
+          onClick={() => setColumnSizing('content')}
+        >
+          Fit content
+        </Button>
+      </>
+    ) : null;
+
+  const fullscreenToggle =
+    fullscreenTitle && !inFullscreen ? (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        leftIcon={<Maximize2 className="size-3.5" />}
+        onClick={() => setMaximized(true)}
+      >
+        Maximize
+      </Button>
+    ) : null;
+
+  const toolbar =
+    sizingToggle || fullscreenToggle ? (
+      <>
+        {sizingToggle}
+        {fullscreenToggle}
+      </>
+    ) : null;
 
   const paginationBar =
     pagination && onPageChange ? (
@@ -241,18 +393,36 @@ export function DataTable<T>({
         onPageChange={onPageChange}
         onPageSizeChange={onPageSizeChange}
         disabled={loading}
+        trailing={toolbar}
       />
     ) : null;
 
-  return (
-    <div className={cn('space-y-4', className)}>
-      {paginationBar}
+  const table = (
+    <div
+      className={cn(
+        'flex min-h-0 flex-col gap-2',
+        (fillParentHeight || stickyViewport) && 'h-full',
+        inFullscreen && 'h-full',
+        className,
+      )}
+    >
+      {paginationBar ? (
+        <div className="shrink-0">{paginationBar}</div>
+      ) : toolbar ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 rounded-xl border border-border/80 bg-card/90 px-3 py-2 shadow-sm ring-1 ring-primary/5 backdrop-blur-sm">
+          {toolbar}
+        </div>
+      ) : null}
 
       <div
-        className="llc-ag-grid-shell"
+        className={cn(
+          'llc-ag-grid-shell min-h-0',
+          !useAutoHeight && 'llc-ag-grid-shell--scroll',
+          (fillParentHeight || stickyViewport || inFullscreen) && 'flex-1',
+        )}
         style={
-          gridMaxHeight != null
-            ? { maxHeight: gridMaxHeight, overflow: 'auto' }
+          resolvedHeight != null
+            ? { height: resolvedHeight, maxHeight: resolvedHeight }
             : undefined
         }
       >
@@ -267,24 +437,38 @@ export function DataTable<T>({
             className="llc-ag-grid"
             style={{
               width: '100%',
+              height: useAutoHeight ? undefined : '100%',
               minHeight: data.length === 0 ? 220 : undefined,
             }}
           >
             <AgGridReact<T>
               theme={appAgGridTheme}
+              containerStyle={{
+                width: '100%',
+                height: useAutoHeight ? undefined : '100%',
+              }}
               rowData={data}
               columnDefs={columnDefs}
               getRowId={getRowId}
-              domLayout="autoHeight"
+              domLayout={useAutoHeight ? 'autoHeight' : 'normal'}
               animateRows
               suppressCellFocus
               suppressDragLeaveHidesColumns
               suppressColumnVirtualisation
-              suppressRowVirtualisation
+              suppressRowVirtualisation={useAutoHeight}
               enableCellTextSelection
               ensureDomOrder
-              headerHeight={44}
-              rowHeight={48}
+              headerHeight={34}
+              rowHeight={40}
+              onGridReady={onGridReady}
+              onFirstDataRendered={(event) => {
+                applyColumnSizing(event.api, columnSizing);
+              }}
+              onGridSizeChanged={(event) => {
+                if (columnSizing === 'fit') {
+                  applyColumnSizing(event.api, 'fit');
+                }
+              }}
               noRowsOverlayComponent={NoRowsOverlay}
               noRowsOverlayComponentParams={{
                 title: emptyTitle,
@@ -296,4 +480,41 @@ export function DataTable<T>({
       </div>
     </div>
   );
+
+  if (inFullscreen && typeof document !== 'undefined') {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-50 flex flex-col bg-background"
+        role="dialog"
+        aria-modal="true"
+        aria-label={
+          typeof fullscreenTitle === 'string'
+            ? `${fullscreenTitle} full screen`
+            : 'Table full screen'
+        }
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold">{fullscreenTitle}</h3>
+            <p className="text-xs text-muted-foreground">
+              Press Escape to exit full screen
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leftIcon={<Minimize2 className="size-4" />}
+            onClick={() => setMaximized(false)}
+          >
+            Minimize
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 p-3">{table}</div>
+      </div>,
+      document.body,
+    );
+  }
+
+  return table;
 }

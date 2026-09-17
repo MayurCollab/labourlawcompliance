@@ -38,7 +38,7 @@ export function ClientFormDrawer({
       description={
         mode === 'create'
           ? 'Clients are normally created from MasterSheet uploads. Use this only if you must add one by hand.'
-          : 'Edit address, RC, template preference, and whether Form 5 includes the salary employee list.'
+          : 'Edit address, RC, contact name for Form 5 WhatsApp, and whether Form 5 includes the salary employee list.'
       }
     >
       {open ? (
@@ -155,32 +155,15 @@ function ClientFormBody({
             error={form.formState.errors.rcNumber?.message}
           />
           <Input
-            label="Fund code"
-            {...form.register('fundCode')}
-            error={form.formState.errors.fundCode?.message}
-          />
-          <Input
-            label="PHY code"
-            hint="Salary branch code, e.g. 0083 for [83]"
-            {...form.register('phyCode')}
-            error={form.formState.errors.phyCode?.message}
-          />
-          <Input
             label="Contact number"
             {...form.register('contactNumber')}
             error={form.formState.errors.contactNumber?.message}
           />
           <Input
-            label="Recipient name"
-            hint="Person greeted on Form 5 WhatsApp messages."
+            label="Contact name"
+            hint="Recipient name used on Form 5 WhatsApp messages."
             {...form.register('recipientName')}
             error={form.formState.errors.recipientName?.message}
-          />
-          <Input
-            label="Status"
-            hint="Stored as-is from MasterSheet (G, SGC, …)"
-            {...form.register('status')}
-            error={form.formState.errors.status?.message}
           />
           <Input
             label="Signatory (this client)"

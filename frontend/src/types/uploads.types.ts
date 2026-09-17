@@ -12,6 +12,8 @@ export type UploadField = {
   label: string;
   required: boolean;
   group: 'client' | 'filing' | 'employee';
+  preview?: boolean | 'ifMapped';
+  previewLabel?: string;
 };
 
 export type UploadMapping = Record<string, number | null>;

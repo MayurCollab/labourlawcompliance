@@ -337,8 +337,15 @@ export function ComponentsGalleryPage() {
       </Section>
 
       <Section title="Forms">
-        <SearchBox value={search} onChange={setSearch} onSubmit={() => undefined} />
         <FilterPanel
+          leading={
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              onSubmit={() => undefined}
+              className="w-[16rem] max-w-full"
+            />
+          }
           fields={[
             { key: 'q', label: 'Keyword', type: 'text', placeholder: 'Search…' },
             {

@@ -43,15 +43,25 @@ export function RolesPage() {
       {
         id: 'name',
         header: 'Role',
+        minWidth: 200,
+        multiline: true,
         cell: (row) => (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{row.name}</span>
+          <div className="min-w-0 py-0.5 leading-tight">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-medium">{row.name}</span>
               {row.isSystemRole ? (
-                <Badge variant="secondary">System</Badge>
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 px-1.5 py-0 text-[0.65rem] leading-4"
+                >
+                  System
+                </Badge>
               ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p
+              className="truncate text-[0.7rem] text-muted-foreground"
+              title={row.description || undefined}
+            >
               {row.description || 'No description'}
             </p>
           </div>

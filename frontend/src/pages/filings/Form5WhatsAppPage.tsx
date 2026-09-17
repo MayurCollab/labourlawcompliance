@@ -158,6 +158,7 @@ export function Form5WhatsAppPage() {
     sortOrder: 'asc',
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sendingFilingId, setSendingFilingId] = useState<string | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
@@ -395,6 +396,25 @@ export function Form5WhatsAppPage() {
     [getDraftPhone, getDraftRecipient],
   );
 
+  const incompleteRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        const contact = rowContactState(row);
+        const invalidPhone =
+          contact.phone.length > 0 && !isValidWhatsAppMobile(contact.phone);
+        return contact.incomplete || invalidPhone;
+      }),
+    [rows, rowContactState, contactSyncKey],
+  );
+  const incompleteCount = incompleteRows.length;
+  const displayRows = incompleteOnly ? incompleteRows : rows;
+
+  useEffect(() => {
+    setIncompleteOnly(false);
+  }, [page, pageSize, search, period, appliedFilters, sort.sortBy, sort.sortOrder]);
+
+  const pageIds = displayRows.map((row) => row.id);
+
   const handleSend = async (row: Filing) => {
     if (!canSend) return;
     const contact = rowContactState(row);
@@ -429,7 +449,6 @@ export function Form5WhatsAppPage() {
     }
   };
 
-  const pageIds = rows.map((row) => row.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
   const somePageSelected = pageIds.some((id) => selectedIds.has(id));
@@ -456,19 +475,8 @@ export function Form5WhatsAppPage() {
   };
 
   const selectedRows = useMemo(
-    () => rows.filter((row) => selectedIds.has(row.id)),
-    [rows, selectedIds],
-  );
-
-  const incompleteCount = useMemo(
-    () =>
-      rows.filter((row) => {
-        const contact = rowContactState(row);
-        const invalidPhone =
-          contact.phone.length > 0 && !isValidWhatsAppMobile(contact.phone);
-        return contact.incomplete || invalidPhone;
-      }).length,
-    [rows, rowContactState, contactSyncKey],
+    () => displayRows.filter((row) => selectedIds.has(row.id)),
+    [displayRows, selectedIds],
   );
 
   const locationOptions = locationOptionsFromClients(
@@ -526,25 +534,37 @@ export function Form5WhatsAppPage() {
       {
         id: 'file',
         header: 'Generated file',
+        minWidth: 180,
+        multiline: true,
         cell: (row) => (
-          <div className="min-w-0 space-y-0.5">
+          <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
             <p
-              className="truncate text-sm"
+              className="truncate text-sm leading-tight"
               title={row.generatedFile?.filename ?? ''}
             >
               {row.generatedFile?.filename ?? '—'}
             </p>
-            <Badge variant="success">Generated</Badge>
+            <Badge
+              variant="success"
+              className="w-fit px-1.5 py-0 text-[0.65rem] leading-4"
+            >
+              Generated
+            </Badge>
           </div>
         ),
       },
       {
         id: 'sentDate',
         header: 'Last sent',
+        minWidth: 120,
+        multiline: true,
         cell: (row) => (
-          <div className="space-y-0.5">
-            <p>{formatDate(row.sentDate)}</p>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0 py-0.5 leading-tight">
+            <p className="truncate text-sm">{formatDate(row.sentDate)}</p>
+            <p
+              className="truncate text-[0.7rem] text-muted-foreground"
+              title={row.mailStatus || undefined}
+            >
               {row.mailStatus || '—'}
             </p>
           </div>
@@ -740,7 +760,7 @@ export function Form5WhatsAppPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="Form 5 WhatsApp"
         description="Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Recipient name and mobile number are stored on the client master."
@@ -751,33 +771,34 @@ export function Form5WhatsAppPage() {
         ]}
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-            setSelectedIds(new Set());
-          }}
-          placeholder="Search client code"
-          className="sm:max-w-xs"
-        />
-        <Input
-          label="Month"
-          type="month"
-          value={period}
-          onChange={(event) => {
-            setPeriod(event.target.value);
-            setPage(1);
-            setSelectedIds(new Set());
-          }}
-          containerClassName="sm:max-w-[12rem]"
-        />
-      </div>
-
       <FilterPanel
         title="Filters"
+        leading={
+          <>
+            <SearchBox
+              value={searchInput}
+              onChange={setSearchInput}
+              onSubmit={() => {
+                setSearch(searchInput.trim());
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              placeholder="Search client code"
+              className="w-[16rem] max-w-full"
+            />
+            <Input
+              label="Month"
+              type="month"
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              containerClassName="w-[11rem]"
+            />
+          </>
+        }
         fields={[
           {
             key: 'locationIds',
@@ -806,6 +827,8 @@ export function Form5WhatsAppPage() {
         onReset={() => {
           setFilters(emptyFilters);
           setAppliedFilters(emptyFilters);
+          setSearchInput('');
+          setSearch('');
           setPage(1);
           setSelectedIds(new Set());
         }}
@@ -842,20 +865,39 @@ export function Form5WhatsAppPage() {
       />
 
       {incompleteCount > 0 ? (
-        <div
+        <button
+          type="button"
           role="status"
-          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+          aria-pressed={incompleteOnly}
+          onClick={() => setIncompleteOnly((value) => !value)}
+          className={cn(
+            'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+            'border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100',
+            'dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+            incompleteOnly && 'ring-2 ring-amber-400/70',
+          )}
         >
-          {incompleteCount} client{incompleteCount === 1 ? '' : 's'} on this
-          page {incompleteCount === 1 ? 'is' : 'are'} missing a recipient name
-          or a valid mobile number. Highlighted fields need to be filled before
-          send.
-        </div>
+          {incompleteOnly ? (
+            <>
+              Showing {incompleteCount} client
+              {incompleteCount === 1 ? '' : 's'} missing recipient name or
+              mobile on this page. Click again to show all rows.
+            </>
+          ) : (
+            <>
+              {incompleteCount} client{incompleteCount === 1 ? '' : 's'} on this
+              page {incompleteCount === 1 ? 'is' : 'are'} missing a recipient
+              name or a valid mobile number. Click to show only these records.
+              Highlighted fields need to be filled before send.
+            </>
+          )}
+        </button>
       ) : null}
 
       <DataTable
         columns={columns}
-        data={rows}
+        data={displayRows}
         rowKey={(row) => row.id}
         loading={filingsQuery.isLoading}
         sort={sort}
@@ -875,6 +917,7 @@ export function Form5WhatsAppPage() {
         emptyTitle="No generated Form 5 files"
         emptyDescription="Generate Form 5 PDFs on the Form 5 page first, then return here to send them on WhatsApp."
         className="min-w-0"
+        fullscreenTitle="Form 5 WhatsApp"
       />
 
       <Modal

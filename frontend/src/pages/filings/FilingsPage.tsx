@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { filingsApi } from '@/api/filings.api';
@@ -26,6 +26,7 @@ import {
   useDownloadFilingMutation,
   useFilingsQuery,
 } from '@/hooks/useFilings';
+import { cn } from '@/lib/utils';
 import { BulkGenerateModal } from '@/pages/filings/BulkGenerateModal';
 import { FilingComputeDrawer } from '@/pages/filings/FilingComputeDrawer';
 import { PATHS } from '@/routes/paths';
@@ -86,6 +87,7 @@ export function FilingsPage() {
   });
   const [selected, setSelected] = useState<Filing | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [ptMismatchOnly, setPtMismatchOnly] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkPayload, setBulkPayload] = useState<BulkGeneratePayload | null>(
     null,
@@ -226,8 +228,18 @@ export function FilingsPage() {
 
   const filingsQuery = useFilingsQuery(params);
   const rows = filingsQuery.data?.filings ?? [];
-  const mismatchCount = rows.filter((row) => row.ptMismatch).length;
-  const pageIds = rows.map((row) => row.id);
+  const mismatchRows = useMemo(
+    () => rows.filter((row) => row.ptMismatch),
+    [rows],
+  );
+  const mismatchCount = mismatchRows.length;
+  const displayRows = ptMismatchOnly ? mismatchRows : rows;
+
+  useEffect(() => {
+    setPtMismatchOnly(false);
+  }, [page, pageSize, search, period, appliedFilters, sort.sortBy, sort.sortOrder]);
+
+  const pageIds = displayRows.map((row) => row.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
   const somePageSelected = pageIds.some((id) => selectedIds.has(id));
@@ -312,18 +324,19 @@ export function FilingsPage() {
         id: 'ptAmount',
         header: 'P.Tax',
         cell: (row) => (
-          <div className="flex flex-col gap-1">
-            <span>{formatAmount(row.ptAmount)}</span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate tabular-nums">{formatAmount(row.ptAmount)}</span>
             {row.ptMismatch ? (
               <Badge
                 variant="warning"
+                className="shrink-0 px-1.5 py-0 text-[0.65rem] leading-4"
                 title={
                   row.salaryPtTotal == null
                     ? undefined
                     : `Salary total ₹${row.salaryPtTotal.toLocaleString('en-IN')}`
                 }
               >
-                Salary {formatAmount(row.salaryPtTotal)}
+                Sal {formatAmount(row.salaryPtTotal)}
               </Badge>
             ) : null}
           </div>
@@ -414,7 +427,7 @@ export function FilingsPage() {
   const matchingTotal = filingsQuery.data?.pagination.total ?? 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="Form 5"
         description="Process a month from this list: open Review for template, manual fields, and PDF generate. Bulk actions still work for the whole month."
@@ -424,33 +437,34 @@ export function FilingsPage() {
         ]}
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-            setSelectedIds(new Set());
-          }}
-          placeholder="Search client code"
-          className="sm:max-w-xs"
-        />
-        <Input
-          label="Month"
-          type="month"
-          value={period}
-          onChange={(event) => {
-            setPeriod(event.target.value);
-            setPage(1);
-            setSelectedIds(new Set());
-          }}
-          containerClassName="sm:max-w-[12rem]"
-        />
-      </div>
-
       <FilterPanel
-        title="Workspace filters"
+        title="Filters"
+        leading={
+          <>
+            <SearchBox
+              value={searchInput}
+              onChange={setSearchInput}
+              onSubmit={() => {
+                setSearch(searchInput.trim());
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              placeholder="Search client code"
+              className="w-[16rem] max-w-full"
+            />
+            <Input
+              label="Month"
+              type="month"
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              containerClassName="w-[11rem]"
+            />
+          </>
+        }
         fields={[
           {
             key: 'locationIds',
@@ -471,13 +485,13 @@ export function FilingsPage() {
           {
             key: 'generateStatus',
             label: 'Generate status',
-            type: 'select',
+            type: 'buttonGroup',
             options: [
               { label: 'Pending', value: 'pending' },
               { label: 'Generated', value: 'generated' },
               { label: 'Failed', value: 'failed' },
             ],
-            placeholder: 'Any status',
+            placeholder: 'Any',
           },
         ]}
         values={filters}
@@ -490,6 +504,8 @@ export function FilingsPage() {
         onReset={() => {
           setFilters(emptyFilters);
           setAppliedFilters(emptyFilters);
+          setSearchInput('');
+          setSearch('');
           setPage(1);
           setSelectedIds(new Set());
         }}
@@ -561,19 +577,39 @@ export function FilingsPage() {
       </div>
 
       {mismatchCount > 0 ? (
-        <div
+        <button
+          type="button"
           role="status"
-          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+          aria-pressed={ptMismatchOnly}
+          onClick={() => setPtMismatchOnly((value) => !value)}
+          className={cn(
+            'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+            'border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100',
+            'dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+            ptMismatchOnly && 'ring-2 ring-amber-400/70',
+          )}
         >
-          {mismatchCount} client{mismatchCount === 1 ? '' : 's'} on this page
-          have a P.Tax mismatch between the master sheet and salary employees.
-          You will be asked to confirm before generating Form 5.
-        </div>
+          {ptMismatchOnly ? (
+            <>
+              Showing {mismatchCount} P.Tax mismatch
+              {mismatchCount === 1 ? '' : 'es'} on this page. Click again to show
+              all rows.
+            </>
+          ) : (
+            <>
+              {mismatchCount} client{mismatchCount === 1 ? '' : 's'} on this page
+              have a P.Tax mismatch between the master sheet and salary
+              employees. Click to show only these records. You will be asked to
+              confirm before generating Form 5.
+            </>
+          )}
+        </button>
       ) : null}
 
       <DataTable
         columns={columns}
-        data={rows}
+        data={displayRows}
         rowKey={(row) => row.id}
         loading={filingsQuery.isLoading}
         sort={sort}
@@ -593,6 +629,7 @@ export function FilingsPage() {
         emptyTitle="No filings for these filters"
         emptyDescription="Pick a month (and optional location / client). Import a MasterSheet if the month is empty."
         className="min-w-0"
+        fullscreenTitle="Form 5"
       />
 
       <FilingComputeDrawer

@@ -10,7 +10,7 @@
  *      "User" (default role for self-registered users, no permissions)
  *   3. A default admin user (from SEED_ADMIN_* env vars) — created only if
  *      missing; an existing user's password is never overwritten.
- *   4. Gujarat PT slab defaults (insert-only — existing rates are not overwritten)
+ *   4. Active PT calc slab (12,000+ @ ₹200 from 2026-07-01); retires legacy 2019 rows
  *   5. Settings singleton (empty signatory)
  *   6. Bundled Form 5 HTML templates + location defaults
  */
@@ -20,6 +20,8 @@ import Permission from '../../modules/permissions/permission.model.js';
 import { DEFAULT_PERMISSIONS } from '../../modules/permissions/permissions.constants.js';
 import PtSlab from '../../modules/ptSlabs/ptSlab.model.js';
 import {
+  ACTIVE_PT_CALC_EFFECTIVE_FROM,
+  ACTIVE_PT_CALC_SLABS,
   GUJARAT_DEFAULT_EFFECTIVE_FROM,
   GUJARAT_DEFAULT_SLABS,
 } from '../../modules/ptSlabs/ptSlabs.constants.js';
@@ -111,32 +113,61 @@ const seedAdminUser = async (superAdminRole) => {
   logger.info(`[seed] Admin user created: ${email}`);
 };
 
-const seedPtSlabs = async () => {
-  let inserted = 0;
+const findSlabIncludingDeleted = (filter) =>
+  PtSlab.findOne(filter, null, { withDeleted: true });
+
+/**
+ * Soft-delete every legacy 2019 Gujarat default that is still active.
+ * Multiple copies can exist (seed used to re-insert after soft-delete).
+ */
+const retireLegacyGujaratDefaults = async () => {
+  let retired = 0;
 
   for (const definition of GUJARAT_DEFAULT_SLABS) {
-    const result = await PtSlab.findOneAndUpdate(
-      {
-        salaryFrom: definition.salaryFrom,
-        salaryTo: definition.salaryTo,
-        effectiveFrom: GUJARAT_DEFAULT_EFFECTIVE_FROM,
-      },
-      {
-        $setOnInsert: {
-          ...definition,
-          effectiveFrom: GUJARAT_DEFAULT_EFFECTIVE_FROM,
-          effectiveTo: null,
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    if (result.createdAt.getTime() === result.updatedAt.getTime()) {
-      inserted += 1;
+    const matches = await PtSlab.find({
+      salaryFrom: definition.salaryFrom,
+      salaryTo: definition.salaryTo,
+      effectiveFrom: GUJARAT_DEFAULT_EFFECTIVE_FROM,
+    });
+
+    for (const existing of matches) {
+      await existing.softDelete();
+      retired += 1;
     }
   }
 
+  return retired;
+};
+
+const seedPtSlabs = async () => {
+  const retired = await retireLegacyGujaratDefaults();
+  let inserted = 0;
+  let skippedDeleted = 0;
+
+  for (const definition of ACTIVE_PT_CALC_SLABS) {
+    const filter = {
+      salaryFrom: definition.salaryFrom,
+      salaryTo: definition.salaryTo,
+      effectiveFrom: ACTIVE_PT_CALC_EFFECTIVE_FROM,
+    };
+    const existing = await findSlabIncludingDeleted(filter);
+
+    if (existing?.isDeleted) {
+      skippedDeleted += 1;
+      continue;
+    }
+    if (existing) continue;
+
+    await PtSlab.create({
+      ...definition,
+      effectiveFrom: ACTIVE_PT_CALC_EFFECTIVE_FROM,
+      effectiveTo: null,
+    });
+    inserted += 1;
+  }
+
   logger.info(
-    `[seed] PT slabs ensured: ${GUJARAT_DEFAULT_SLABS.length} Gujarat defaults (${inserted} inserted)`,
+    `[seed] PT slabs: retired ${retired} legacy 2019 rows; ensured ${ACTIVE_PT_CALC_SLABS.length} active (${inserted} inserted, ${skippedDeleted} soft-deleted skipped)`,
   );
 };
 

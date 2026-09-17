@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { Button } from '@/components/buttons/Button';
 import {
   DATA_TABLE_ALL_PAGE_SIZE,
@@ -18,6 +20,8 @@ export type PaginationProps = {
   onPageSizeChange?: (size: DataTablePageSizeOption) => void;
   className?: string;
   disabled?: boolean;
+  /** Extra controls rendered inside the bar (e.g. Fit width / Fit content). */
+  trailing?: ReactNode;
 };
 
 export function Pagination({
@@ -30,6 +34,7 @@ export function Pagination({
   onPageSizeChange,
   className,
   disabled = false,
+  trailing,
 }: PaginationProps) {
   const safeTotalPages = Math.max(1, totalPages);
   const canPrev = page > 1;
@@ -123,6 +128,15 @@ export function Pagination({
         >
           Next
         </Button>
+        {trailing ? (
+          <>
+            <span
+              className="mx-0.5 hidden h-5 w-px bg-border sm:block"
+              aria-hidden
+            />
+            {trailing}
+          </>
+        ) : null}
       </div>
     </nav>
   );

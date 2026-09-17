@@ -21,7 +21,6 @@ import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
-  DEFAULT_DATA_TABLE_PAGE_SIZE,
   resolveDataTableLimit,
   type DataTableColumn,
   type DataTablePageSizeOption,
@@ -62,6 +61,7 @@ const PURGE_SALARY_TEXT = 'CLEAR SALARY';
 const PURGE_CLIENT_MASTER_TEXT = 'CLEAR ADDRESSES';
 const RECENT_VISIBLE = 5;
 const RECENT_FETCH_LIMIT = 50;
+const SHEET_TABLE_HEIGHT = 'min(40rem, calc(100dvh - 14rem))';
 
 const KIND_OPTIONS: {
   label: string;
@@ -69,12 +69,12 @@ const KIND_OPTIONS: {
   hint: string;
 }[] = [
   {
-    label: 'Clients / MasterSheet',
+    label: 'MasterSheet',
     value: 'master',
     hint: 'Typical file: MasterSheet All Clients.xlsx. Clients + month tracker (code, company, location, RC, challan).',
   },
   {
-    label: 'Salary employees',
+    label: 'SalarySheet',
     value: 'salary',
     hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO is required; PT GROSS, PHY_CODE and Client code are optional. Blank PT GROSS uses P.Tax ₹200.',
   },
@@ -86,9 +86,9 @@ const KIND_OPTIONS: {
 ];
 
 const kindLabel = (kind: UploadKind) => {
-  if (kind === 'salary') return 'Salary';
+  if (kind === 'salary') return 'SalarySheet';
   if (kind === 'clientMaster') return 'Addresses';
-  return 'Master';
+  return 'MasterSheet';
 };
 
 const statusVariant = (
@@ -104,6 +104,14 @@ const mappingComplete = (fields: UploadField[], mapping: UploadMapping) =>
   fields
     .filter((field) => field.required)
     .every((field) => typeof mapping[field.key] === 'number');
+
+const isPreviewField = (field: UploadField, mapping: UploadMapping) => {
+  if (field.preview === true) return true;
+  if (field.preview === 'ifMapped') {
+    return typeof mapping[field.key] === 'number';
+  }
+  return false;
+};
 
 const importHasErrors = (report?: ImportReport | null) =>
   Boolean(
@@ -131,8 +139,7 @@ export function UploadsPage() {
   const [companyName, setCompanyName] = useState('');
   const [rowsPage, setRowsPage] = useState(1);
   const [rowsPageSize, setRowsPageSize] =
-    useState<DataTablePageSizeOption>(DEFAULT_DATA_TABLE_PAGE_SIZE);
-  const [sheetDataExpanded, setSheetDataExpanded] = useState(false);
+    useState<DataTablePageSizeOption>(25);
   const [purgeMasterOpen, setPurgeMasterOpen] = useState(false);
   const [purgeSalaryOpen, setPurgeSalaryOpen] = useState(false);
   const [purgeClientMasterOpen, setPurgeClientMasterOpen] = useState(false);
@@ -165,7 +172,6 @@ export function UploadsPage() {
     setPeriod(upload.period || upload.parse.suggestedPeriod || '');
     setCompanyName(upload.companyName || '');
     setRowsPage(1);
-    setSheetDataExpanded(false);
   };
 
   // Rehydrate report / clear session when returning after a background import.
@@ -225,21 +231,28 @@ export function UploadsPage() {
     (current?.kind !== 'salary' || Boolean(period));
 
   const previewColumns: DataTableColumn<UploadPreviewRow>[] = useMemo(() => {
-    const fields = (rowsQuery.data?.fields ?? current?.parse.fields ?? []).filter(
-      (field) =>
-        field.key === 'matchedClientCode' ||
-        field.key === 'matchedCompanyName' ||
-        typeof mapping[field.key] === 'number',
+    const fields = rowsQuery.data?.fields ?? current?.parse.fields ?? [];
+    const previewFields = fields.filter((field) =>
+      isPreviewField(field, mapping),
     );
+    const tableFields =
+      previewFields.length > 0
+        ? previewFields
+        : fields.filter(
+            (field) =>
+              field.key === 'matchedClientCode' ||
+              field.key === 'matchedCompanyName' ||
+              typeof mapping[field.key] === 'number',
+          );
     return [
       {
         id: 'excelRow',
         header: 'Row',
         cell: (row) => row.excelRow,
       },
-      ...fields.map((field) => ({
+      ...tableFields.map((field) => ({
         id: field.key,
-        header: field.label,
+        header: field.previewLabel || field.label,
         cell: (row: UploadPreviewRow) => row.cells[field.key] || '—',
       })),
     ];
@@ -591,31 +604,14 @@ export function UploadsPage() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">
-                  Sheet data ({rowCount})
-                </h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  leftIcon={
-                    sheetDataExpanded ? (
-                      <ChevronUp className="size-4" />
-                    ) : (
-                      <ChevronDown className="size-4" />
-                    )
-                  }
-                  onClick={() => setSheetDataExpanded((prev) => !prev)}
-                >
-                  {sheetDataExpanded ? 'Shrink table' : 'Expand table'}
-                </Button>
-              </div>
+              <h3 className="mb-2 text-sm font-medium">
+                Sheet data ({rowCount})
+              </h3>
               <DataTable
                 columns={previewColumns}
                 data={rowsQuery.data?.rows ?? []}
                 rowKey={(row) => String(row.excelRow)}
-                loading={rowsQuery.isFetching}
+                loading={rowsQuery.isLoading && !rowsQuery.data}
                 pagination={rowsQuery.data?.pagination}
                 onPageChange={setRowsPage}
                 pageSizeSelection={rowsPageSize}
@@ -623,7 +619,8 @@ export function UploadsPage() {
                   setRowsPage(1);
                   setRowsPageSize(size);
                 }}
-                gridMaxHeight={sheetDataExpanded ? undefined : 280}
+                gridMaxHeight={SHEET_TABLE_HEIGHT}
+                fullscreenTitle={`Sheet data (${rowCount})`}
                 emptyTitle="No data rows"
                 emptyDescription="Pick a sheet that has the expected headers and data."
               />

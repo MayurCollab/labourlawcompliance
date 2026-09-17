@@ -6,12 +6,12 @@ import { themeQuartz } from 'ag-grid-community';
  */
 export const appAgGridTheme = themeQuartz.withParams({
   fontFamily: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
-  fontSize: 14,
-  borderRadius: 10,
-  wrapperBorderRadius: 14,
-  spacing: 8,
+  fontSize: 13,
+  borderRadius: 8,
+  wrapperBorderRadius: 12,
+  spacing: 4,
   headerFontWeight: 600,
-  headerFontSize: 12,
+  headerFontSize: 11,
   rowBorder: true,
   columnBorder: false,
   accentColor: 'var(--primary)',

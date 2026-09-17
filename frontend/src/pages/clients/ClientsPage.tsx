@@ -2,14 +2,6 @@ import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
-import { Badge } from '@/components/common/Badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/Card';
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { FormWrapper } from '@/components/forms/FormWrapper';
@@ -67,9 +59,6 @@ const toPayload = (values: ClientFormValues): ClientPayload => ({
   rcNumber: emptyToNull(values.rcNumber),
   contactNumber: emptyToNull(values.contactNumber),
   recipientName: emptyToNull(values.recipientName),
-  fundCode: emptyToNull(values.fundCode),
-  phyCode: emptyToNull(values.phyCode),
-  status: emptyToNull(values.status),
   signatoryName: emptyToNull(values.signatoryName),
   includeEmployeesOnForm5: values.includeEmployeesOnForm5 !== false,
 });
@@ -143,16 +132,17 @@ export function ClientsPage() {
   const columns: DataTableColumn<Client>[] = [
     {
       id: 'clientCode',
-      header: 'Client',
+      header: 'Client ID',
       sortable: true,
       cell: (row) => (
-        <div className="min-w-0 space-y-0.5">
-          <p className="font-medium">{row.clientCode}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {row.companyName}
-          </p>
-        </div>
+        <span className="font-medium">{row.clientCode}</span>
       ),
+    },
+    {
+      id: 'companyName',
+      header: 'Client name',
+      sortable: true,
+      cell: (row) => row.companyName || '—',
     },
     {
       id: 'location',
@@ -161,7 +151,7 @@ export function ClientsPage() {
     },
     {
       id: 'rcNumber',
-      header: 'Reg No.',
+      header: 'Reg. no.',
       cell: (row) => row.rcNumber ?? '—',
     },
     {
@@ -179,20 +169,9 @@ export function ClientsPage() {
       cell: (row) => row.contactNumber ?? '—',
     },
     {
-      id: 'fundCode',
-      header: 'Fund',
-      cell: (row) => row.fundCode ?? '—',
-    },
-    {
-      id: 'phyCode',
-      header: 'PHY',
-      cell: (row) => row.phyCode ?? '—',
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      cell: (row) =>
-        row.status ? <Badge variant="secondary">{row.status}</Badge> : '—',
+      id: 'recipientName',
+      header: 'Contact name',
+      cell: (row) => row.recipientName ?? '—',
     },
     {
       id: 'actions',
@@ -238,16 +217,18 @@ export function ClientsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-[calc(100dvh-3.5rem-1.5rem)] flex-col gap-2.5">
       <PageHeader
+        className="shrink-0"
         title="Clients"
-        description="Employer client master from uploaded sheets. Add or update clients by uploading MasterSheet and Client - Master."
+        description="Employer client master from uploaded sheets."
         breadcrumbs={[
           { label: 'Home', href: PATHS.home },
           { label: 'Clients' },
         ]}
         actions={
           <Button
+            size="sm"
             variant="outline"
             leftIcon={<Download className="size-4" />}
             loading={exportMutation.isPending}
@@ -261,60 +242,58 @@ export function ClientsPage() {
       />
 
       <PermissionGate permission={PERMISSIONS.CLIENTS_EDIT}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Default signatory</CardTitle>
-            <CardDescription>
-              Used on Form 5 when a client has no signatory of their own. Leave
-              empty until you set it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FormWrapper<SignatoryFormValues>
-              key={settingsQuery.data?.signatoryName ?? 'empty'}
-              schema={signatoryFormSchema}
-              defaultValues={{
-                signatoryName: settingsQuery.data?.signatoryName ?? '',
-              }}
-              guardUnsavedChanges={false}
-              onSubmit={(values) => {
-                settingsMutation.mutate({
-                  signatoryName: values.signatoryName,
-                });
-              }}
-            >
-              {(form) => (
-                <div className="flex flex-wrap items-end gap-3">
-                  <Input
-                    label="Name"
-                    containerClassName="min-w-56 flex-1"
-                    {...form.register('signatoryName')}
-                    error={form.formState.errors.signatoryName?.message}
-                  />
-                  <Button type="submit" loading={settingsMutation.isPending}>
-                    Save
-                  </Button>
-                </div>
-              )}
-            </FormWrapper>
-          </CardContent>
-        </Card>
+        <FormWrapper<SignatoryFormValues>
+          key={settingsQuery.data?.signatoryName ?? 'empty'}
+          schema={signatoryFormSchema}
+          defaultValues={{
+            signatoryName: settingsQuery.data?.signatoryName ?? '',
+          }}
+          guardUnsavedChanges={false}
+          onSubmit={(values) => {
+            settingsMutation.mutate({
+              signatoryName: values.signatoryName,
+            });
+          }}
+        >
+          {(form) => (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-card/90 px-2.5 py-1.5 shadow-sm ring-1 ring-primary/5">
+              <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Default signatory
+              </span>
+              <Input
+                aria-label="Default signatory"
+                placeholder="Name used on Form 5 when client has none"
+                containerClassName="min-w-48 flex-1 sm:max-w-sm"
+                className="h-8 py-1.5"
+                {...form.register('signatoryName')}
+                error={form.formState.errors.signatoryName?.message}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                loading={settingsMutation.isPending}
+              >
+                Save
+              </Button>
+            </div>
+          )}
+        </FormWrapper>
       </PermissionGate>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={(value) => {
-            setPage(1);
-            setSearch(value.trim());
-          }}
-          placeholder="Search code, company, RC…"
-          className="lg:max-w-xs"
-        />
-      </div>
-
       <FilterPanel
+        className="shrink-0"
+        leading={
+          <SearchBox
+            value={searchInput}
+            onChange={setSearchInput}
+            onSubmit={(value) => {
+              setPage(1);
+              setSearch(value.trim());
+            }}
+            placeholder="Search code, company, RC, contact name…"
+            className="w-[16rem] max-w-full"
+          />
+        }
         fields={[
           {
             key: 'locationIds',
@@ -334,39 +313,46 @@ export function ClientsPage() {
         onReset={() => {
           setFilters({ locationIds: [] });
           setAppliedFilters({ locationIds: [] });
+          setSearchInput('');
+          setSearch('');
           setPage(1);
         }}
       />
 
-      <DataTable
-        columns={columns}
-        data={clientsQuery.data?.clients ?? []}
-        rowKey={(row) => row.id}
-        loading={clientsQuery.isLoading}
-        sort={sort}
-        onSortChange={(next) => {
-          setPage(1);
-          setSort(next);
-        }}
-        pagination={
-          clientsQuery.data
-            ? {
-                page: clientsQuery.data.pagination.page,
-                limit: clientsQuery.data.pagination.limit,
-                total: clientsQuery.data.pagination.total,
-                totalPages: clientsQuery.data.pagination.totalPages,
-              }
-            : undefined
-        }
-        onPageChange={setPage}
-        pageSizeSelection={pageSize}
-        onPageSizeChange={(size) => {
-          setPage(1);
-          setPageSize(size);
-        }}
-        emptyTitle="No clients yet"
-        emptyDescription="Upload MasterSheet All Clients.xlsx on the Uploads page. Addresses come from Client - Master.xlsx."
-      />
+      <div className="min-h-0 flex-1">
+        <DataTable
+          className="h-full"
+          gridMaxHeight="100%"
+          columns={columns}
+          data={clientsQuery.data?.clients ?? []}
+          rowKey={(row) => row.id}
+          loading={clientsQuery.isLoading}
+          sort={sort}
+          onSortChange={(next) => {
+            setPage(1);
+            setSort(next);
+          }}
+          pagination={
+            clientsQuery.data
+              ? {
+                  page: clientsQuery.data.pagination.page,
+                  limit: clientsQuery.data.pagination.limit,
+                  total: clientsQuery.data.pagination.total,
+                  totalPages: clientsQuery.data.pagination.totalPages,
+                }
+              : undefined
+          }
+          onPageChange={setPage}
+          pageSizeSelection={pageSize}
+          onPageSizeChange={(size) => {
+            setPage(1);
+            setPageSize(size);
+          }}
+          emptyTitle="No clients yet"
+          emptyDescription="Upload MasterSheet All Clients.xlsx on the Uploads page. Addresses come from Client - Master.xlsx."
+          fullscreenTitle="Clients"
+        />
+      </div>
 
       <ClientFormDrawer
         open={drawerOpen}

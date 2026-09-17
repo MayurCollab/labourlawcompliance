@@ -24,7 +24,7 @@ import {
 } from '@/validations/masters.validation';
 
 const toDateInput = (value?: string | null) =>
-  value ? value.slice(0, 10) : '2019-04-01';
+  value ? value.slice(0, 10) : '2026-07-01';
 
 const formatAmount = (value: number) => value.toLocaleString('en-IN');
 
@@ -136,7 +136,7 @@ export function PtSlabsPage() {
         rowKey={(row) => row.id}
         loading={slabsQuery.isLoading}
         emptyTitle="No PT slabs"
-        emptyDescription="Run the seeder to insert the Gujarat default table."
+        emptyDescription="Add the active PT band (e.g. ₹12,000 and above @ ₹200). Gross below that band is P.Tax 0."
       />
 
       <Modal
@@ -256,7 +256,7 @@ export function PtSlabsPage() {
         title="Delete PT slab?"
         message={
           pendingDelete
-            ? `Delete “${pendingDelete.label}”? The seeder will re-insert Gujarat defaults if this row is one of them.`
+            ? `Delete “${pendingDelete.label}”? Soft-deleted rows stay removed — the seeder will not re-insert them.`
             : ''
         }
         confirmLabel="Delete"

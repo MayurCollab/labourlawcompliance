@@ -241,7 +241,7 @@ export function WhatsAppSendsPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="WhatsApp sends"
         description="Delivery history for Form 5 WhatsApp messages — accepted, delivered, read, and failed."
@@ -252,30 +252,31 @@ export function WhatsAppSendsPage() {
         ]}
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-          }}
-          placeholder="Search phone, client, file…"
-          className="sm:max-w-xs"
-        />
-        <Input
-          label="Period"
-          type="month"
-          value={period}
-          onChange={(event) => {
-            setPeriod(event.target.value);
-            setPage(1);
-          }}
-          containerClassName="sm:max-w-[12rem]"
-        />
-      </div>
-
       <FilterPanel
+        leading={
+          <>
+            <SearchBox
+              value={searchInput}
+              onChange={setSearchInput}
+              onSubmit={() => {
+                setSearch(searchInput.trim());
+                setPage(1);
+              }}
+              placeholder="Search phone, client, file…"
+              className="w-[16rem] max-w-full"
+            />
+            <Input
+              label="Period"
+              type="month"
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+              }}
+              containerClassName="w-[11rem]"
+            />
+          </>
+        }
         fields={[
           {
             key: 'locationIds',
@@ -316,6 +317,8 @@ export function WhatsAppSendsPage() {
         onReset={() => {
           setFilters(emptyFilters);
           setAppliedFilters(emptyFilters);
+          setSearchInput('');
+          setSearch('');
           setPage(1);
         }}
         footer={
@@ -352,6 +355,7 @@ export function WhatsAppSendsPage() {
         }}
         emptyTitle="No WhatsApp sends"
         emptyDescription="Send a Form 5 from the WhatsApp page to see delivery status here."
+        fullscreenTitle="WhatsApp sends"
       />
 
       <ConfirmDialog

@@ -21,6 +21,7 @@ import {
   REQUIRED_MAPPING_KEYS,
   stringifyCell,
   collectMappedDataRows,
+  toFieldMeta,
   ROW_PAGE_MAX,
 } from './masterParse.js';
 import {
@@ -136,7 +137,13 @@ const buildRowFields = (row, mapping, fields) => {
   const values = {};
   for (const field of fields) {
     const raw = getMappedValue(row, mapping, field.key);
-    if (raw === undefined) continue;
+    const empty = raw === undefined || stringifyCell(raw) === '';
+    if (empty) {
+      if (field.defaultValue !== undefined) {
+        values[field.key] = field.defaultValue;
+      }
+      continue;
+    }
     values[field.key] = raw;
   }
   return values;
@@ -247,12 +254,7 @@ export const listUploadRows = async (id, body = {}) => {
     kind: upload.kind,
     selectedSheet: parsed.selectedSheet,
     mapping,
-    fields: [...fields.map(({ key, label, required, group }) => ({
-      key,
-      label,
-      required,
-      group,
-    })), ...extraFields],
+    fields: [...toFieldMeta(fields), ...extraFields],
     rows: enriched.slice(start, start + limit),
     pagination: {
       page,

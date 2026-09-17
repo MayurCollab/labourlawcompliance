@@ -53,4 +53,24 @@ describe('masterParse', () => {
     const mapping = autoMapColumns(['No.', 'Something']);
     expect(mapping.clientCode).toBeNull();
   });
+
+  test('auto-maps optional Client name / Contact name without stealing Client', () => {
+    const byClientName = autoMapColumns([
+      'Client',
+      'Name of Company',
+      'Client name',
+    ]);
+    expect(byClientName.clientCode).toBe(0);
+    expect(byClientName.companyName).toBe(1);
+    expect(byClientName.recipientName).toBe(2);
+
+    const byContactName = autoMapColumns([
+      'Client',
+      'Contact name',
+      'Contact Number',
+    ]);
+    expect(byContactName.clientCode).toBe(0);
+    expect(byContactName.recipientName).toBe(1);
+    expect(byContactName.contactNumber).toBe(2);
+  });
 });

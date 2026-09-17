@@ -15,7 +15,10 @@ export const PT_SLABS_MESSAGES = Object.freeze({
   FETCHED: 'PT slabs fetched successfully.',
 });
 
-/** First day the current Gujarat table is treated as in force. */
+/**
+ * Official Form 5 grid shape (five salary bands). Used by HTML fill /
+ * template seeding only — not what the PT slabs master seeds into the DB.
+ */
 export const GUJARAT_DEFAULT_EFFECTIVE_FROM = new Date(
   '2019-04-01T00:00:00.000Z',
 );
@@ -55,5 +58,23 @@ export const GUJARAT_DEFAULT_SLABS = Object.freeze([
     rate: 200,
     label: 'Rs. 12,000 and above',
     sortOrder: 5,
+  },
+]);
+
+/**
+ * Active PT calculation table stored in the DB / PT slabs master.
+ * Gross below 12,000 → no matching band → P.Tax 0.
+ */
+export const ACTIVE_PT_CALC_EFFECTIVE_FROM = new Date(
+  '2026-07-01T00:00:00.000Z',
+);
+
+export const ACTIVE_PT_CALC_SLABS = Object.freeze([
+  {
+    salaryFrom: 12000,
+    salaryTo: null,
+    rate: 200,
+    label: 'Rs. 12,000 and above',
+    sortOrder: 1,
   },
 ]);

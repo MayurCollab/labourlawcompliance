@@ -4,6 +4,8 @@ export {
   type DataTableColumn,
   type DataTableSort,
   type DataTablePagination,
+  type DataTableGridHeight,
+  type DataTableColumnSizing,
   type SortDirection,
 } from './DataTable';
 export { DataTableLoading, type DataTableLoadingProps } from './DataTableLoading';

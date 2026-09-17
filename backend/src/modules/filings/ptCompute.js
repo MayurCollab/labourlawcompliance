@@ -61,14 +61,15 @@ export const findSlabForEmployee = (slabs, ptGross) => {
 };
 
 /**
- * P.Tax for salary/Form 5: slab rate from PT GROSS, or ₹200 when gross is blank.
+ * P.Tax for salary/Form 5: slab rate from PT GROSS, ₹200 when gross is blank,
+ * or 0 when gross does not fall in any active slab.
  */
 export const resolvePTax = (slabs, ptGross) => {
   const amount = asNumber(ptGross);
   if (amount === null) return DEFAULT_PT_WITHOUT_GROSS;
   const slab = findSlabForGross(slabs, amount);
   if (slab?.rate !== undefined && slab?.rate !== null) return slab.rate;
-  return null;
+  return 0;
 };
 
 const emptyBucket = (slab) => ({

@@ -137,7 +137,7 @@ export function EmployeesPage() {
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="Employees"
         description="Month snapshots from salary workbooks. Rows that could not be tied to a client stay unmatched until PHY_CODE is on a Client."
@@ -147,30 +147,31 @@ export function EmployeesPage() {
         ]}
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-          }}
-          placeholder="Search EMPNO or name"
-          className="sm:max-w-xs"
-        />
-        <Input
-          label="Period"
-          type="month"
-          value={period}
-          onChange={(event) => {
-            setPeriod(event.target.value);
-            setPage(1);
-          }}
-          containerClassName="sm:max-w-[12rem]"
-        />
-      </div>
-
       <FilterPanel
+        leading={
+          <>
+            <SearchBox
+              value={searchInput}
+              onChange={setSearchInput}
+              onSubmit={() => {
+                setSearch(searchInput.trim());
+                setPage(1);
+              }}
+              placeholder="Search EMPNO or name"
+              className="w-[16rem] max-w-full"
+            />
+            <Input
+              label="Period"
+              type="month"
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+              }}
+              containerClassName="w-[11rem]"
+            />
+          </>
+        }
         fields={[
           {
             key: 'clientIds',
@@ -200,6 +201,8 @@ export function EmployeesPage() {
         onReset={() => {
           setFilters(emptyFilters);
           setAppliedFilters(emptyFilters);
+          setSearchInput('');
+          setSearch('');
           setPage(1);
         }}
       />
@@ -223,6 +226,7 @@ export function EmployeesPage() {
         }}
         emptyTitle="No employees"
         emptyDescription="Upload a salary workbook to populate this list."
+        fullscreenTitle="Employees"
       />
     </div>
   );

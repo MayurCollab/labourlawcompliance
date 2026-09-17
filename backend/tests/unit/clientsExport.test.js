@@ -35,6 +35,7 @@ describe('clientsExport', () => {
         address: 'First floor, SG Highway',
         rcNumber: 'PRC016780178',
         contactNumber: null,
+        recipientName: 'Priya Shah',
         fundCode: 'G0001',
         phyCode: '0083',
         status: 'G',
@@ -50,6 +51,7 @@ describe('clientsExport', () => {
       'First floor, SG Highway',
       'PRC016780178',
       '',
+      'Priya Shah',
       'G0001',
       '0083',
       'G',
@@ -78,6 +80,6 @@ describe('clientsExport', () => {
     expect(rows[1][0]).toBe('C0002');
     expect(rows[1][1]).toBe('Beta Ltd.');
     expect(rows[1][3]).toBe('Surat');
-    expect(rows[1][12]).toBe('No');
+    expect(rows[1][13]).toBe('No');
   });
 });

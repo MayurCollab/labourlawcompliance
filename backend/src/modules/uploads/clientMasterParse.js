@@ -8,6 +8,7 @@ import {
   readWorkbookSheets,
   rowHasAnyValue,
   stringifyCell,
+  toFieldMeta,
   toHeaders,
 } from './masterParse.js';
 
@@ -69,13 +70,7 @@ export const CLIENT_MASTER_FIELDS = Object.freeze([
 
 export const CLIENT_MASTER_REQUIRED_KEYS = Object.freeze(['clientCode']);
 
-const fieldMeta = () =>
-  CLIENT_MASTER_FIELDS.map(({ key, label, required, group }) => ({
-    key,
-    label,
-    required,
-    group,
-  }));
+const fieldMeta = () => toFieldMeta(CLIENT_MASTER_FIELDS);
 
 export const looksLikeClientMasterHeader = (cells) => {
   const labels = new Set((cells || []).map(normalizeHeader).filter(Boolean));

@@ -212,7 +212,7 @@ export function UsersPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <PageHeader
         title="Users"
         description="Manage accounts, roles, and activation status."
@@ -236,20 +236,19 @@ export function UsersPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <SearchBox
-          value={searchInput}
-          onChange={setSearchInput}
-          onSubmit={(value) => {
-            setPage(1);
-            setSearch(value.trim());
-          }}
-          placeholder="Search name or email…"
-          className="lg:max-w-xs"
-        />
-      </div>
-
       <FilterPanel
+        leading={
+          <SearchBox
+            value={searchInput}
+            onChange={setSearchInput}
+            onSubmit={(value) => {
+              setPage(1);
+              setSearch(value.trim());
+            }}
+            placeholder="Search name or email…"
+            className="w-[16rem] max-w-full"
+          />
+        }
         fields={[
           {
             key: 'role',
@@ -278,6 +277,8 @@ export function UsersPage() {
         onReset={() => {
           setFilters({ role: '', isActive: '' });
           setAppliedFilters({ role: '', isActive: '' });
+          setSearchInput('');
+          setSearch('');
           setPage(1);
         }}
       />

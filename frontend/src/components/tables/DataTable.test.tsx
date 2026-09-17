@@ -36,6 +36,21 @@ describe('DataTable', () => {
     expect(await screen.findByText('No users')).toBeInTheDocument();
   });
 
+  it('renders rows inside a capped-height paginated grid', async () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        rowKey={(row) => row.id}
+        gridMaxHeight={280}
+        pagination={{ page: 1, limit: 10, total: 2, totalPages: 1 }}
+        onPageChange={() => undefined}
+      />,
+    );
+    expect(await screen.findByText('Ada')).toBeInTheDocument();
+    expect(screen.getByText('Grace')).toBeInTheDocument();
+  });
+
   it('calls onSortChange when a sortable header is clicked', async () => {
     const user = userEvent.setup();
     const onSortChange = vi.fn();
@@ -57,5 +72,27 @@ describe('DataTable', () => {
         sortOrder: 'asc',
       });
     });
+  });
+
+  it('opens full screen and exits with Escape', async () => {
+    const user = userEvent.setup();
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        rowKey={(row) => row.id}
+        fullscreenTitle="People"
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Maximize' }));
+    expect(
+      screen.getByRole('dialog', { name: 'People full screen' }),
+    ).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(
+      screen.queryByRole('dialog', { name: 'People full screen' }),
+    ).not.toBeInTheDocument();
   });
 });

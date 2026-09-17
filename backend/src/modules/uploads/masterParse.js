@@ -9,6 +9,16 @@ export const PREVIEW_ROW_LIMIT = 20;
 export const HEADER_SCAN_ROWS = 50;
 export const ROW_PAGE_MAX = 200;
 
+export const toFieldMeta = (fields) =>
+  fields.map((field) => ({
+    key: field.key,
+    label: field.label,
+    required: Boolean(field.required),
+    group: field.group,
+    ...(field.preview != null ? { preview: field.preview } : {}),
+    ...(field.previewLabel ? { previewLabel: field.previewLabel } : {}),
+  }));
+
 export const MASTER_FIELDS = Object.freeze([
   {
     key: 'status',
@@ -30,6 +40,7 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['client', 'client code'],
     group: 'client',
     required: true,
+    preview: true,
   },
   {
     key: 'companyName',
@@ -37,6 +48,7 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['name of company', 'company name'],
     group: 'client',
     required: true,
+    preview: true,
   },
   {
     key: 'draftName',
@@ -51,13 +63,16 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['location'],
     group: 'client',
     required: true,
+    preview: true,
   },
   {
     key: 'ptAmount',
     label: 'P.Tax Amount',
-    aliases: ['p tax amount', 'ptax amount', 'pt amount'],
+    aliases: ['p tax amount', 'ptax amount', 'pt amount', 'p tax'],
     group: 'filing',
     required: false,
+    preview: true,
+    previewLabel: 'P.tax',
   },
   {
     key: 'chequeNo',
@@ -93,6 +108,8 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['reg no', 'registration no', 'rc number', 'rc no'],
     group: 'client',
     required: false,
+    preview: true,
+    previewLabel: 'Reg no.',
   },
   {
     key: 'contactNumber',
@@ -100,6 +117,21 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['contact number', 'contact no'],
     group: 'client',
     required: false,
+    preview: true,
+    previewLabel: 'Contact number',
+  },
+  {
+    key: 'recipientName',
+    label: 'Contact name',
+    aliases: [
+      'contact name',
+      'client name',
+      'recipient name',
+      'contact person',
+    ],
+    group: 'client',
+    required: false,
+    preview: 'ifMapped',
   },
   {
     key: 'fundCode',
@@ -114,6 +146,7 @@ export const MASTER_FIELDS = Object.freeze([
     aliases: ['month', 'period'],
     group: 'filing',
     required: false,
+    preview: true,
   },
   {
     key: 'receivedInBank',
@@ -431,12 +464,7 @@ export const parseMasterSheet = (rows, sheetName) => {
       dataStartIndex: 0,
       rowCount: 0,
       warnings: ['This sheet is empty.'],
-      fields: MASTER_FIELDS.map(({ key, label, required, group }) => ({
-        key,
-        label,
-        required,
-        group,
-      })),
+      fields: toFieldMeta(MASTER_FIELDS),
     };
   }
 
@@ -459,12 +487,7 @@ export const parseMasterSheet = (rows, sheetName) => {
       dataStartIndex: 0,
       rowCount: 0,
       warnings: ['This sheet is empty.'],
-      fields: MASTER_FIELDS.map(({ key, label, required, group }) => ({
-        key,
-        label,
-        required,
-        group,
-      })),
+      fields: toFieldMeta(MASTER_FIELDS),
     };
   }
 
@@ -498,12 +521,7 @@ export const parseMasterSheet = (rows, sheetName) => {
     dataStartIndex,
     rowCount: countDataRows(rows, dataStartIndex),
     warnings,
-    fields: MASTER_FIELDS.map(({ key, label, required, group }) => ({
-      key,
-      label,
-      required,
-      group,
-    })),
+    fields: toFieldMeta(MASTER_FIELDS),
   };
 };
 
@@ -547,7 +565,8 @@ export const mappedCellsForRow = (row, mapping, fields) => {
   const cells = {};
   for (const field of fields) {
     const raw = getMappedValue(row, mapping, field.key);
-    cells[field.key] = raw === undefined ? '' : stringifyCell(raw);
+    const text = raw === undefined ? '' : stringifyCell(raw);
+    cells[field.key] = text || field.defaultValue || '';
   }
   return cells;
 };
