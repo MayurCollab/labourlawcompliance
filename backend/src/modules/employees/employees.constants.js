@@ -1,9 +1,14 @@
 export const EMPLOYEES_CODES = Object.freeze({
   EMPLOYEE_NOT_FOUND: 'EMPLOYEE_NOT_FOUND',
+  EMPLOYEE_KEY_IN_USE: 'EMPLOYEE_KEY_IN_USE',
+  CLIENT_NOT_FOUND: 'CLIENT_NOT_FOUND',
 });
 
 export const EMPLOYEES_MESSAGES = Object.freeze({
   FETCHED: 'Employees fetched successfully.',
+  CREATED: 'Employee created successfully.',
+  UPDATED: 'Employee updated successfully.',
+  DELETED: 'Employee deleted successfully.',
 });
 
 export const EMPLOYEE_SORTABLE_FIELDS = Object.freeze([

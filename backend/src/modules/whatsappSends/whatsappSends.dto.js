@@ -51,6 +51,10 @@ export const toWhatsAppSendDto = (send) => ({
   filename: send.filename,
   mediaUrl: send.mediaUrl,
   templateName: send.templateName,
+  whatsappTemplateId: send.whatsappTemplate
+    ? String(send.whatsappTemplate._id ?? send.whatsappTemplate)
+    : null,
+  templateSnapshot: send.templateSnapshot ?? null,
   status: send.status,
   requestId: send.requestId,
   providerMessageId: send.providerMessageId,

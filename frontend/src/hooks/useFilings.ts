@@ -169,3 +169,32 @@ export const useSendFilingWhatsAppMutation = () => {
     },
   });
 };
+
+export const useBulkSendFilingsWhatsAppMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['filings', 'bulk-whatsapp'],
+    mutationFn: (payload: { ids: string[]; templateId: string }) =>
+      filingsApi.bulkSendWhatsApp(payload),
+    onSuccess: (result) => {
+      const { sent, failed, skipped } = result;
+      if (failed === 0 && skipped === 0) {
+        toastSuccess(`WhatsApp sent to ${sent} ${sent === 1 ? 'client' : 'clients'}`);
+      } else if (sent > 0) {
+        toastSuccess(
+          `WhatsApp sent to ${sent} ${sent === 1 ? 'client' : 'clients'}. ${failed + skipped} ${failed + skipped === 1 ? 'was' : 'were'} skipped or failed.`,
+        );
+      } else {
+        toastError('No WhatsApp messages were sent. Check the errors.');
+      }
+      void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
+    },
+    onError: (error) => {
+      toastError(
+        getApiErrorMessage(error, 'Could not send WhatsApp messages in bulk'),
+      );
+    },
+  });
+};

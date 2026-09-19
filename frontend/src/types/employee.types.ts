@@ -53,3 +53,21 @@ export type ListEmployeesResult = {
     totalPages: number;
   };
 };
+
+export type EmployeePayload = {
+  clientId: string;
+  employeeNo: string;
+  employeeName?: string | null;
+  period: string;
+  periodLabel?: string | null;
+  state?: string | null;
+  ptGross?: number | null;
+};
+
+export type UpdateEmployeePayload = Partial<EmployeePayload>;
+
+export type EmployeeLookupParams = {
+  employeeNo: string;
+  clientId: string;
+  period: string;
+};

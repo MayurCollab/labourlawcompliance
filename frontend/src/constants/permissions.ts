@@ -22,6 +22,9 @@ export const PERMISSIONS = {
   UPLOADS_CREATE: 'uploads.create',
   UPLOADS_PURGE: 'uploads.purge',
   EMPLOYEES_VIEW: 'employees.view',
+  EMPLOYEES_CREATE: 'employees.create',
+  EMPLOYEES_EDIT: 'employees.edit',
+  EMPLOYEES_DELETE: 'employees.delete',
   FILINGS_VIEW: 'filings.view',
   FILINGS_CREATE: 'filings.create',
   FILINGS_EDIT: 'filings.edit',
@@ -31,6 +34,10 @@ export const PERMISSIONS = {
   TEMPLATES_CREATE: 'templates.create',
   TEMPLATES_EDIT: 'templates.edit',
   TEMPLATES_DELETE: 'templates.delete',
+  WHATSAPP_TEMPLATES_VIEW: 'whatsappTemplates.view',
+  WHATSAPP_TEMPLATES_CREATE: 'whatsappTemplates.create',
+  WHATSAPP_TEMPLATES_EDIT: 'whatsappTemplates.edit',
+  WHATSAPP_TEMPLATES_DELETE: 'whatsappTemplates.delete',
 } as const;
 
 export type PermissionName = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

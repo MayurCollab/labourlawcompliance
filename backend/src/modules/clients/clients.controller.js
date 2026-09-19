@@ -32,6 +32,13 @@ export const getClient = asyncHandler(async (req, res) => {
   return sendSuccess(res, { client }, CLIENTS_MESSAGES.FETCHED);
 });
 
+export const getClientByCode = asyncHandler(async (req, res) => {
+  const client = await clientsService.findClientByCodeForLookup(
+    req.params.clientCode,
+  );
+  return sendSuccess(res, { client }, CLIENTS_MESSAGES.FETCHED);
+});
+
 export const createClient = asyncHandler(async (req, res) => {
   const client = await clientsService.createClient(req.body, req.user.id);
   return sendSuccess(res, { client }, CLIENTS_MESSAGES.CREATED, 201);

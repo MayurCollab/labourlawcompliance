@@ -8,6 +8,7 @@ import { idParamSchema } from '../../validations/common.validation.js';
 import { PERMISSION_NAMES } from '../permissions/permissions.constants.js';
 import * as clientsController from './clients.controller.js';
 import {
+  clientCodeParamSchema,
   createClientSchema,
   exportClientsQuerySchema,
   listClientsQuerySchema,
@@ -82,6 +83,26 @@ router.get(
   checkPermission(PERMISSION_NAMES.CLIENTS_VIEW),
   validate({ query: exportClientsQuerySchema }),
   clientsController.exportClients,
+);
+
+/**
+ * @openapi
+ * /clients/by-code/{clientCode}:
+ *   get:
+ *     tags: [Clients]
+ *     summary: Look up a client by its code (for Add Client autofill)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: clientCode, required: true, schema: { type: string } }
+ *     responses:
+ *       200:
+ *         description: Matching client, or null when the code is not in use
+ */
+router.get(
+  '/by-code/:clientCode',
+  checkPermission(PERMISSION_NAMES.CLIENTS_VIEW),
+  validate({ params: clientCodeParamSchema }),
+  clientsController.getClientByCode,
 );
 
 /**

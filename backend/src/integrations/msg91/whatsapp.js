@@ -15,81 +15,23 @@ export const toWhatsAppBold = (value) => {
   return `*${text}*`;
 };
 
-/**
- * Send a WhatsApp template message with a document header via MSG91 bulk API.
- *
- * @param {{
- *   phone: string,
- *   filename: string,
- *   mediaUrl: string,
- *   recipientName: string,
- *   monthName: string,
- *   year: string,
- * }} params
- */
-export const sendForm5WhatsAppTemplate = async ({
-  phone,
-  filename,
-  mediaUrl,
-  recipientName,
-  monthName,
-  year,
-}) => {
-  const {
-    authKey,
-    integratedNumber,
-    templateName,
-    templateNamespace,
-    templateLanguage,
-    apiUrl,
-  } = config.msg91;
-
-  if (!authKey) {
-    throw new AppError('MSG91 WhatsApp is not configured (MSG91_AUTH_KEY).', 503, {
-      code: 'MSG91_NOT_CONFIGURED',
-    });
+const buildComponents = ({ filename, mediaUrl, bodyValues }) => {
+  const components = {};
+  if (mediaUrl) {
+    components.header_1 = { filename, type: 'document', value: mediaUrl };
   }
+  bodyValues.forEach((value, index) => {
+    components[`body_${index + 1}`] = {
+      type: 'text',
+      value: toWhatsAppBold(value),
+    };
+  });
+  return components;
+};
 
-  const body = {
-    integrated_number: integratedNumber,
-    content_type: 'template',
-    payload: {
-      messaging_product: 'whatsapp',
-      type: 'template',
-      template: {
-        name: templateName,
-        language: {
-          code: templateLanguage,
-          policy: 'deterministic',
-        },
-        namespace: templateNamespace,
-        to_and_components: [
-          {
-            to: [phone],
-            components: {
-              header_1: {
-                filename,
-                type: 'document',
-                value: mediaUrl,
-              },
-              body_1: {
-                type: 'text',
-                value: toWhatsAppBold(recipientName),
-              },
-              body_2: {
-                type: 'text',
-                value: toWhatsAppBold(monthName),
-              },
-              body_3: {
-                type: 'text',
-                value: toWhatsAppBold(year),
-              },
-            },
-          },
-        ],
-      },
-    },
-  };
+/** One POST to the MSG91 bulk endpoint. Throws AppError on any failure. */
+const postBulkRequest = async (body) => {
+  const { authKey, apiUrl } = config.msg91;
 
   let response;
   try {
@@ -132,6 +74,72 @@ export const sendForm5WhatsAppTemplate = async ({
   }
 
   return payload;
+};
+
+/**
+ * Send one approved template to many recipients through the MSG91 bulk API
+ * (`to_and_components`, one entry per recipient). Entries are sent in chunks of
+ * `config.msg91.bulkChunkSize`, one HTTP request per chunk, so a rejected
+ * chunk fails only its own recipients.
+ *
+ * @param {{
+ *   template: { name: string, namespace: string, languageCode: string },
+ *   entries: Array<{
+ *     to: string[],
+ *     bodyValues: string[],
+ *     filename?: string,
+ *     mediaUrl?: string,
+ *     ref?: unknown,
+ *   }>,
+ * }} params
+ * @returns {Promise<{ chunks: Array<{
+ *   entries: object[], ok: boolean, response: object|null, error: Error|null,
+ * }> }>}
+ */
+export const sendWhatsAppTemplateBatch = async ({ template, entries }) => {
+  const { authKey, integratedNumber, bulkChunkSize } = config.msg91;
+
+  if (!authKey) {
+    throw new AppError('MSG91 WhatsApp is not configured (MSG91_AUTH_KEY).', 503, {
+      code: 'MSG91_NOT_CONFIGURED',
+    });
+  }
+
+  const size = Math.max(1, Number(bulkChunkSize) || 300);
+  const chunks = [];
+
+  for (let start = 0; start < entries.length; start += size) {
+    const slice = entries.slice(start, start + size);
+    const body = {
+      integrated_number: integratedNumber,
+      content_type: 'template',
+      payload: {
+        messaging_product: 'whatsapp',
+        type: 'template',
+        template: {
+          name: template.name,
+          language: {
+            code: template.languageCode,
+            policy: 'deterministic',
+          },
+          namespace: template.namespace,
+          to_and_components: slice.map((entry) => ({
+            to: entry.to,
+            components: buildComponents(entry),
+          })),
+        },
+      },
+    };
+
+    try {
+      const response = await postBulkRequest(body);
+      chunks.push({ entries: slice, ok: true, response, error: null });
+    } catch (error) {
+      chunks.push({ entries: slice, ok: false, response: null, error });
+    }
+  }
+
+  return { chunks };
 };
 
 const DEFAULT_LOGS_API_URL =

@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { KeyRound, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -37,12 +37,38 @@ export function Navbar({
   const { user, logout, isLoggingOut } = useAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
 
   return (
     <header
       aria-label="Application"
       className={cn(
-        'relative flex h-14 items-center justify-between gap-3 border-b border-border bg-background px-4',
+        'relative z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background px-4',
         className,
       )}
     >
@@ -93,7 +119,7 @@ export function Navbar({
         ) : null}
 
         {showUserMenu ? (
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <Button
               type="button"
               variant="outline"

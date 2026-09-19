@@ -47,6 +47,13 @@ export const useLocationsQuery = (options?: { enabled?: boolean }) =>
     staleTime: 60_000,
   });
 
+/** Silent lookup for the Add Client form's autofill — no toasts on either outcome. */
+export const useClientByCodeLookup = () =>
+  useMutation({
+    mutationKey: ['clients', 'lookup'],
+    mutationFn: (clientCode: string) => clientsApi.getByCode(clientCode),
+  });
+
 export const useCreateClientMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({

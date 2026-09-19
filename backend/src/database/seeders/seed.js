@@ -13,6 +13,7 @@
  *   4. Active PT calc slab (12,000+ @ ₹200 from 2026-07-01); retires legacy 2019 rows
  *   5. Settings singleton (empty signatory)
  *   6. Bundled Form 5 HTML templates + location defaults
+ *   7. WhatsApp template migrated from the old hardcoded MSG91 config
  */
 import config from '../../config/index.js';
 import { connectDB, disconnectDB } from '../../config/db.js';
@@ -33,6 +34,7 @@ import User from '../../modules/users/user.model.js';
 import logger from '../../utils/logger.js';
 import { hashPassword } from '../../utils/password.js';
 import { seedForm5BundledTemplates } from './seedForm5Templates.js';
+import { seedWhatsAppTemplates } from './seedWhatsAppTemplates.js';
 
 const seedPermissions = async () => {
   const permissions = [];
@@ -189,6 +191,7 @@ const run = async () => {
   await seedPtSlabs();
   await seedSettings();
   await seedForm5BundledTemplates();
+  await seedWhatsAppTemplates();
 
   await disconnectDB();
   logger.info('[seed] Done.');

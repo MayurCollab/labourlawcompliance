@@ -22,6 +22,7 @@ import {
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery } from '@/hooks/useClients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   filingsQueryKeys,
   useFilingsQuery,
@@ -164,6 +165,13 @@ export function Form5WhatsAppPage() {
   const [bulkSending, setBulkSending] = useState(false);
   /** Bumps when drafts should remount inputs (after send / external sync). */
   const [contactSyncKey, setContactSyncKey] = useState(0);
+
+  const debouncedSearchInput = useDebouncedValue(searchInput);
+  useEffect(() => {
+    setSearch(debouncedSearchInput.trim());
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [debouncedSearchInput]);
 
   const phoneDraftsRef = useRef<Record<string, string>>({});
   const recipientDraftsRef = useRef<Record<string, string>>({});

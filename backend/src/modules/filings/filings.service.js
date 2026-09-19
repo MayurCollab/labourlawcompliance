@@ -1,11 +1,12 @@
 import AppError from '../../utils/AppError.js';
 import storage from '../../storage/index.js';
 import { sanitizeUserHtml } from '../../utils/sanitize.js';
+import { periodMonthAndYear } from '../../utils/period.js';
 import {
   ensurePdfFilename,
   normalizeWhatsAppPhone,
 } from '../../integrations/msg91/phone.js';
-import { sendForm5WhatsAppTemplate } from '../../integrations/msg91/whatsapp.js';
+import { sendWhatsAppTemplateBatch } from '../../integrations/msg91/whatsapp.js';
 import {
   ACTIVITY_ACTIONS,
   ENTITY_TYPES,
@@ -31,6 +32,13 @@ import {
 import * as ptSlabsService from '../ptSlabs/ptSlabs.service.js';
 import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
 import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
+import * as whatsappTemplatesService from '../whatsappTemplates/whatsappTemplates.service.js';
+import {
+  buildWhatsAppSourceData,
+  resolveWhatsAppMessage,
+  toTemplateSnapshot,
+  missingFieldsMessage,
+} from '../whatsappTemplates/whatsappTemplates.resolve.js';
 import { FILINGS_CODES, GENERATE_STATUSES } from './filings.constants.js';
 import { toFilingDto, toFilingListDto } from './filings.dto.js';
 import { buildPtMismatch, toPtMismatchDto } from './ptMismatch.js';
@@ -50,8 +58,7 @@ import { computePt, periodToDate } from './ptCompute.js';
 import { resolveForm5OutputBuffer } from './form5Output.js';
 import * as templatesRepository from '../templates/templates.repository.js';
 import * as templatesService from '../templates/templates.service.js';
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+import { escapeRegex, exactMatchRegex, splitSearchTokens } from '../../utils/searchTokens.js';
 
 const blankToNull = (value) => {
   if (value === undefined) return undefined;
@@ -145,19 +152,23 @@ const buildListFilter = async (query) => {
   if (period) filter.period = period;
   if (generateStatus) filter.generateStatus = generateStatus;
 
+  const searchTokens = splitSearchTokens(search);
+  const isMultiCodeSearch = searchTokens.length > 1;
+
   if (query.recentlyAdded) {
     const codes = await lastImportedMasterClientCodes();
     if (!codes.length) {
       filter._id = { $in: [] };
     } else if (search) {
-      filter.clientCode = {
-        $in: codes,
-        $regex: escapeRegex(search),
-        $options: 'i',
-      };
+      filter.clientCode = isMultiCodeSearch
+        ? { $in: codes, $regex: exactMatchRegex(searchTokens) }
+        : { $in: codes, $regex: escapeRegex(search), $options: 'i' };
     } else {
       filter.clientCode = { $in: codes };
     }
+  } else if (isMultiCodeSearch) {
+    // Pasted list of client codes (e.g. copied from Excel) — exact match, not substring.
+    filter.$or = [{ clientCode: exactMatchRegex(searchTokens) }];
   } else if (search) {
     const regex = { $regex: escapeRegex(search), $options: 'i' };
     filter.$or = [{ clientCode: regex }];
@@ -1098,30 +1109,7 @@ export const downloadGenerated = async (id, version) => {
   };
 };
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
-const periodMonthAndYear = (period) => {
-  const match = String(period ?? '').match(/^(\d{4})-(\d{2})$/);
-  if (!match) return { monthName: '', year: '' };
-  const month = Number(match[2]);
-  return {
-    monthName: MONTH_NAMES[month - 1] || match[2],
-    year: match[1],
-  };
-};
+// Period utilities moved to ../../utils/period.js
 
 const clientRefId = (client) => {
   if (!client) return null;
@@ -1134,6 +1122,7 @@ const clientRefId = (client) => {
 /**
  * Send the latest generated Form 5 PDF on WhatsApp via MSG91.
  * Uses the public S3 object URL stored on generatedFile.storedPath.
+ * Requires a WhatsApp template to be selected.
  */
 export const sendFilingWhatsApp = async (id, body, actorId) => {
   const filing = await findFilingOrFail(id);
@@ -1157,6 +1146,11 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       { code: FILINGS_CODES.WHATSAPP_MEDIA_URL_MISSING },
     );
   }
+
+  // Load the selected WhatsApp template (must be active)
+  const template = await whatsappTemplatesService.getActiveTemplateOrFail(
+    body.templateId,
+  );
 
   const rawPhone =
     body?.phone !== undefined && body?.phone !== null && String(body.phone).trim()
@@ -1185,12 +1179,22 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       ? String(body.recipientName).trim()
       : String(filing.client?.recipientName ?? '').trim();
 
-  if (!rawRecipientName) {
-    throw new AppError(
-      'Add a recipient name for this client before sending on WhatsApp.',
-      400,
-      { code: FILINGS_CODES.WHATSAPP_RECIPIENT_REQUIRED },
-    );
+  // Build source data for template resolution
+  const sourceData = buildWhatsAppSourceData({
+    client: filing.client,
+    clientCode: filing.clientCode,
+    period: filing.period,
+    periodLabel: filing.periodLabel,
+    recipientName: rawRecipientName,
+  });
+
+  // Resolve template with source data
+  const { bodyValues, missing } = resolveWhatsAppMessage(template, sourceData);
+
+  if (missing.length > 0) {
+    throw new AppError(missingFieldsMessage(missing), 400, {
+      code: FILINGS_CODES.WHATSAPP_MISSING_FIELDS,
+    });
   }
 
   const clientId = clientRefId(filing.client);
@@ -1207,33 +1211,50 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     await clientsService.updateClient(clientId, clientPatch, actorId);
   }
 
-  const { monthName, year } = periodMonthAndYear(filing.period);
   const filename = ensurePdfFilename(filing.generatedFile.filename);
+  const templateSnapshot = toTemplateSnapshot(template);
 
   const sendLedgerBase = {
     filingId: filing.id,
     clientId,
     clientCode: filing.clientCode,
-    companyName:
-      filing.client?.companyName || filing.clientCode || null,
+    companyName: filing.client?.companyName || filing.clientCode || null,
     phone,
     period: filing.period,
     periodLabel: filing.periodLabel || null,
     filename,
     mediaUrl,
+    whatsappTemplateId: template.id || template._id,
+    templateSnapshot,
     actorId,
   };
 
   let msg91Response;
   try {
-    msg91Response = await sendForm5WhatsAppTemplate({
-      phone,
-      filename,
-      mediaUrl,
-      recipientName: rawRecipientName,
-      monthName,
-      year,
+    const result = await sendWhatsAppTemplateBatch({
+      template: {
+        name: template.msg91TemplateName,
+        namespace: template.namespace,
+        language: template.languageCode || 'en',
+      },
+      entries: [
+        {
+          to: [phone],
+          filename,
+          mediaUrl,
+          bodyValues,
+        },
+      ],
     });
+
+    // Single-recipient send: check if the one chunk succeeded
+    if (!result.chunks?.[0]?.ok) {
+      throw new AppError(
+        result.chunks?.[0]?.error?.message || 'MSG91 API call failed',
+        500,
+      );
+    }
+    msg91Response = result.chunks[0].response;
   } catch (error) {
     await recordWhatsAppSend({
       ...sendLedgerBase,
@@ -1259,6 +1280,7 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       filename,
       period: filing.period,
       clientCode: filing.clientCode,
+      templateLabel: template.label,
     },
   });
 
@@ -1273,5 +1295,269 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     filing: await toFilingDtoWithHint(await findFilingOrFail(id)),
     phone,
     msg91: msg91Response,
+  };
+};
+
+/**
+ * Send multiple Form 5 filings on WhatsApp in one operation.
+ * Validates all filings, builds one MSG91 bulk call per chunk, and reports
+ * sent/failed/skipped counts with per-filing error details.
+ */
+export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
+  // Load template once (must be active)
+  const template = await whatsappTemplatesService.getActiveTemplateOrFail(templateId);
+  const templateSnapshot = toTemplateSnapshot(template);
+
+  // Load all filings
+  const filings = await filingsRepository.findFilingsByIds(ids);
+  if (filings.length === 0) {
+    throw new AppError('No filings found for the provided IDs.', 404, {
+      code: FILINGS_CODES.FILING_NOT_FOUND,
+    });
+  }
+
+  const errors = [];
+  const skipped = [];
+  const validEntries = [];
+  const filingMap = new Map(); // phone -> filing for later lookup
+
+  // Validate each filing and build entries for valid ones
+  for (const filing of filings) {
+    const clientCode = filing.clientCode || 'N/A';
+
+    // Check if generated
+    if (
+      filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
+      !filing.generatedFile?.storedPath
+    ) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Form 5 not generated',
+      });
+      continue;
+    }
+
+    const mediaUrl = String(filing.generatedFile.storedPath || '').trim();
+    if (!/^https?:\/\//i.test(mediaUrl)) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'No public S3 URL',
+      });
+      continue;
+    }
+
+    // Check phone
+    const rawPhone = filing.client?.contactNumber;
+    if (!rawPhone) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Missing mobile number',
+      });
+      continue;
+    }
+
+    const phone = normalizeWhatsAppPhone(rawPhone);
+    if (!phone) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Invalid mobile number',
+      });
+      continue;
+    }
+
+    // Check recipient name
+    const rawRecipientName = String(filing.client?.recipientName ?? '').trim();
+    if (!rawRecipientName) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Missing recipient name',
+      });
+      continue;
+    }
+
+    // Build source data and resolve template
+    const sourceData = buildWhatsAppSourceData({
+      client: filing.client,
+      clientCode: filing.clientCode,
+      period: filing.period,
+      periodLabel: filing.periodLabel,
+      recipientName: rawRecipientName,
+    });
+
+    const { bodyValues, missing } = resolveWhatsAppMessage(template, sourceData);
+
+    if (missing.length > 0) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: missingFieldsMessage(missing),
+      });
+      continue;
+    }
+
+    // Valid entry
+    const filename = ensurePdfFilename(filing.generatedFile.filename);
+    validEntries.push({
+      filing,
+      phone,
+      filename,
+      mediaUrl,
+      bodyValues,
+    });
+    filingMap.set(phone, filing);
+  }
+
+  if (validEntries.length === 0) {
+    return {
+      sent: 0,
+      failed: 0,
+      skipped: skipped.length,
+      errors,
+    };
+  }
+
+  // Call MSG91 bulk send (internally chunked)
+  let result;
+  try {
+    result = await sendWhatsAppTemplateBatch({
+      template: {
+        name: template.msg91TemplateName,
+        namespace: template.namespace,
+        language: template.languageCode || 'en',
+      },
+      entries: validEntries.map((entry) => ({
+        to: [entry.phone],
+        filename: entry.filename,
+        mediaUrl: entry.mediaUrl,
+        bodyValues: entry.bodyValues,
+      })),
+    });
+  } catch (error) {
+    // Entire batch failed - mark all as failed
+    for (const entry of validEntries) {
+      const filing = entry.filing;
+      const clientId = clientRefId(filing.client);
+
+      await recordWhatsAppSend({
+        filingId: filing.id,
+        clientId,
+        clientCode: filing.clientCode,
+        companyName: filing.client?.companyName || filing.clientCode || null,
+        phone: entry.phone,
+        period: filing.period,
+        periodLabel: filing.periodLabel || null,
+        filename: entry.filename,
+        mediaUrl: entry.mediaUrl,
+        whatsappTemplateId: template.id || template._id,
+        templateSnapshot,
+        status: WHATSAPP_SEND_STATUSES.FAILED,
+        errorMessage: error?.message || 'Bulk send failed',
+        failedAt: new Date(),
+        actorId,
+      });
+
+      errors.push({
+        clientCode: filing.clientCode || 'N/A',
+        message: error?.message || 'Bulk send failed',
+      });
+    }
+
+    return {
+      sent: 0,
+      failed: validEntries.length,
+      skipped: skipped.length,
+      errors,
+    };
+  }
+
+  // Process results per chunk
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const chunk of result.chunks || []) {
+    const chunkPhones = chunk.phones || [];
+    const chunkOk = chunk.ok;
+    const chunkError = chunk.error;
+
+    for (const phone of chunkPhones) {
+      const entry = validEntries.find((e) => e.phone === phone);
+      if (!entry) continue;
+
+      const filing = entry.filing;
+      const clientId = clientRefId(filing.client);
+      const now = new Date();
+
+      const sendLedgerBase = {
+        filingId: filing.id,
+        clientId,
+        clientCode: filing.clientCode,
+        companyName: filing.client?.companyName || filing.clientCode || null,
+        phone: entry.phone,
+        period: filing.period,
+        periodLabel: filing.periodLabel || null,
+        filename: entry.filename,
+        mediaUrl: entry.mediaUrl,
+        whatsappTemplateId: template.id || template._id,
+        templateSnapshot,
+        actorId,
+      };
+
+      if (chunkOk) {
+        // Chunk succeeded
+        filing.sentDate = now;
+        filing.mailStatus = 'WhatsApp sent';
+        filing.updatedBy = actorId;
+        await filingsRepository.saveFiling(filing);
+
+        await recordWhatsAppSend({
+          ...sendLedgerBase,
+          status: WHATSAPP_SEND_STATUSES.ACCEPTED,
+          providerResponse: chunk.response,
+          sentAt: now,
+        });
+
+        sentCount++;
+      } else {
+        // Chunk failed
+        await recordWhatsAppSend({
+          ...sendLedgerBase,
+          status: WHATSAPP_SEND_STATUSES.FAILED,
+          errorMessage: chunkError?.message || 'Chunk send failed',
+          failedAt: now,
+        });
+
+        errors.push({
+          clientCode: filing.clientCode || 'N/A',
+          message: chunkError?.message || 'Chunk send failed',
+        });
+
+        failedCount++;
+      }
+    }
+  }
+
+  // Record bulk activity
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.FILING_BULK_WHATSAPP_SEND,
+    entityType: ENTITY_TYPES.FILING,
+    changes: {
+      templateLabel: template.label,
+      sent: sentCount,
+      failed: failedCount,
+      skipped: skipped.length,
+      total: ids.length,
+    },
+  });
+
+  return {
+    sent: sentCount,
+    failed: failedCount,
+    skipped: skipped.length,
+    errors,
   };
 };

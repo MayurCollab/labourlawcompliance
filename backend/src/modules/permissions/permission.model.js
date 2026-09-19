@@ -11,13 +11,11 @@ const permissionSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Permission name is required'],
     trim: true,
-    lowercase: true,
   },
   module: {
     type: String,
     required: [true, 'Module is required'],
     trim: true,
-    lowercase: true,
   },
   description: {
     type: String,

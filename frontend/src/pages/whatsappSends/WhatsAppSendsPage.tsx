@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
@@ -18,6 +18,7 @@ import {
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery } from '@/hooks/useClients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
 import {
   useDeleteWhatsAppSendMutation,
@@ -98,6 +99,12 @@ export function WhatsAppSendsPage() {
     sortOrder: 'desc',
   });
   const [pendingDelete, setPendingDelete] = useState<WhatsAppSend | null>(null);
+
+  const debouncedSearchInput = useDebouncedValue(searchInput);
+  useEffect(() => {
+    setSearch(debouncedSearchInput.trim());
+    setPage(1);
+  }, [debouncedSearchInput]);
 
   const optionsQuery = useClientOptionsQuery();
   const locationIds = filterIds(appliedFilters.locationIds);

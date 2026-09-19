@@ -11,7 +11,7 @@ import {
 } from './whatsappSends.constants.js';
 
 export const listWhatsAppSendsQuerySchema = paginationQuerySchema.extend({
-  search: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(20000).optional(),
   period: z
     .string()
     .trim()

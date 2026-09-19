@@ -44,6 +44,13 @@ export const clientsApi = {
     return data.data.client;
   },
 
+  getByCode: async (clientCode: string): Promise<Client | null> => {
+    const { data } = await axiosInstance.get<
+      ApiSuccessResponse<{ client: Client | null }>
+    >(`/api/v1/clients/by-code/${encodeURIComponent(clientCode)}`);
+    return data.data.client;
+  },
+
   create: async (payload: ClientPayload): Promise<Client> => {
     const { data } = await axiosInstance.post<
       ApiSuccessResponse<{ client: Client }>

@@ -17,6 +17,9 @@ export const findClientById = (id) =>
 
 export const findClientByCode = (clientCode) => Client.findOne({ clientCode });
 
+export const findClientByCodePopulated = (clientCode) =>
+  Client.findOne({ clientCode }).populate(LOCATION_POPULATE);
+
 export const findAllCompact = () =>
   Client.find()
     .select('clientCode companyName phyCode fundCode location')

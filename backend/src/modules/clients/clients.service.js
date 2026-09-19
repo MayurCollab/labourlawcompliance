@@ -16,10 +16,9 @@ import { CLIENTS_CODES, normalizeClientCode } from './clients.constants.js';
 import { toClientDto, toClientListDto } from './clients.dto.js';
 import { buildClientsWorkbook } from './clientsExport.js';
 import * as clientsRepository from './clients.repository.js';
+import { escapeRegex, exactMatchRegex, splitSearchTokens } from '../../utils/searchTokens.js';
 
 const CLIENT_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const blankToNull = (value) => {
   if (value === undefined) return undefined;
@@ -65,7 +64,15 @@ const normalizeIdList = (...groups) => {
 const buildClientListFilter = ({ search, locationId, locationIds, fundCode }) => {
   const filter = {};
   if (search) {
-    const regex = { $regex: escapeRegex(search), $options: 'i' };
+    const tokens = splitSearchTokens(search);
+    // Pasted list (e.g. codes or company names copied from Excel) — exact
+    // match per field, not substring, but still checked across every
+    // searchable field so a list of company names matches just as well as
+    // a list of client codes.
+    const regex =
+      tokens.length > 1
+        ? exactMatchRegex(tokens)
+        : { $regex: escapeRegex(search), $options: 'i' };
     filter.$or = [
       { clientCode: regex },
       { companyName: regex },
@@ -172,6 +179,17 @@ export const listClientOptions = async () => {
 export const getClient = async (id) => {
   const client = await findClientOrFail(id);
   return toClientDto(client);
+};
+
+/**
+ * Silent lookup for the Add Client form: typing an existing client code
+ * autofills the rest of the form instead of failing on submit with 409.
+ */
+export const findClientByCodeForLookup = async (clientCode) => {
+  const code = normalizeClientCode(clientCode);
+  if (!code) return null;
+  const client = await clientsRepository.findClientByCodePopulated(code);
+  return client ? toClientDto(client) : null;
 };
 
 export const createClient = async (data, actorId) => {

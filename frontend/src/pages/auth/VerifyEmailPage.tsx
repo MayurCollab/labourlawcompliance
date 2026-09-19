@@ -41,7 +41,7 @@ export function VerifyEmailPage() {
     );
   }
 
-  if (verifyMutation.isPending) {
+  if (verifyMutation.isPending || verifyMutation.isIdle) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <LoadingSpinner />

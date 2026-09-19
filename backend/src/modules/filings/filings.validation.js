@@ -14,7 +14,7 @@ const periodSchema = z
   .regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM');
 
 export const listFilingsQuerySchema = paginationQuerySchema.extend({
-  search: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(20000).optional(),
   period: periodSchema.optional(),
   locationId: objectIdSchema.optional(),
   locationIds: objectIdListSchema,
@@ -51,7 +51,7 @@ export const bulkGenerateFilingsSchema = z
     clientId: objectIdSchema.optional(),
     clientIds: objectIdListSchema,
     generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
-    search: z.string().trim().max(100).optional(),
+    search: z.string().trim().max(20000).optional(),
     recentlyAdded: booleanQuerySchema,
   })
   .superRefine((data, ctx) => {
@@ -73,7 +73,7 @@ export const listPtMismatchesQuerySchema = z
     clientId: objectIdSchema.optional(),
     clientIds: objectIdListSchema,
     generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
-    search: z.string().trim().max(100).optional(),
+    search: z.string().trim().max(20000).optional(),
     recentlyAdded: booleanQuerySchema,
   })
   .superRefine((data, ctx) => {
@@ -86,7 +86,13 @@ export const listPtMismatchesQuerySchema = z
     }
   });
 
+export const bulkSendFilingWhatsAppSchema = z.object({
+  ids: z.array(objectIdSchema).min(1, 'Select at least one filing').max(500),
+  templateId: objectIdSchema,
+});
+
 export const sendFilingWhatsAppSchema = z.object({
+  templateId: objectIdSchema,
   phone: z.string().trim().max(32).optional(),
   savePhone: z.boolean().optional(),
   recipientName: z.string().trim().max(120).optional(),

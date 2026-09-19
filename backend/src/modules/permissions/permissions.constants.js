@@ -40,6 +40,9 @@ export const PERMISSION_NAMES = Object.freeze({
   UPLOADS_CREATE: 'uploads.create',
   UPLOADS_PURGE: 'uploads.purge',
   EMPLOYEES_VIEW: 'employees.view',
+  EMPLOYEES_CREATE: 'employees.create',
+  EMPLOYEES_EDIT: 'employees.edit',
+  EMPLOYEES_DELETE: 'employees.delete',
   FILINGS_VIEW: 'filings.view',
   FILINGS_CREATE: 'filings.create',
   FILINGS_EDIT: 'filings.edit',
@@ -49,6 +52,10 @@ export const PERMISSION_NAMES = Object.freeze({
   TEMPLATES_CREATE: 'templates.create',
   TEMPLATES_EDIT: 'templates.edit',
   TEMPLATES_DELETE: 'templates.delete',
+  WHATSAPP_TEMPLATES_VIEW: 'whatsappTemplates.view',
+  WHATSAPP_TEMPLATES_CREATE: 'whatsappTemplates.create',
+  WHATSAPP_TEMPLATES_EDIT: 'whatsappTemplates.edit',
+  WHATSAPP_TEMPLATES_DELETE: 'whatsappTemplates.delete',
 });
 
 /** Default permission set inserted by the seeder. */
@@ -75,6 +82,9 @@ export const DEFAULT_PERMISSIONS = Object.freeze([
   { name: PERMISSION_NAMES.UPLOADS_CREATE, module: 'uploads', description: 'Upload MasterSheet and salary workbooks' },
   { name: PERMISSION_NAMES.UPLOADS_PURGE, module: 'uploads', description: 'Clear imported master or salary data' },
   { name: PERMISSION_NAMES.EMPLOYEES_VIEW, module: 'employees', description: 'View employee month snapshots' },
+  { name: PERMISSION_NAMES.EMPLOYEES_CREATE, module: 'employees', description: 'Add employee month snapshots by hand' },
+  { name: PERMISSION_NAMES.EMPLOYEES_EDIT, module: 'employees', description: 'Edit employee month snapshots' },
+  { name: PERMISSION_NAMES.EMPLOYEES_DELETE, module: 'employees', description: 'Delete employee month snapshots' },
   { name: PERMISSION_NAMES.FILINGS_VIEW, module: 'filings', description: 'View Form 5 filings' },
   { name: PERMISSION_NAMES.FILINGS_CREATE, module: 'filings', description: 'Create Form 5 filings' },
   { name: PERMISSION_NAMES.FILINGS_EDIT, module: 'filings', description: 'Edit Form 5 filings' },
@@ -84,4 +94,8 @@ export const DEFAULT_PERMISSIONS = Object.freeze([
   { name: PERMISSION_NAMES.TEMPLATES_CREATE, module: 'templates', description: 'Upload Form 5 templates' },
   { name: PERMISSION_NAMES.TEMPLATES_EDIT, module: 'templates', description: 'Edit template mappings and assignments' },
   { name: PERMISSION_NAMES.TEMPLATES_DELETE, module: 'templates', description: 'Delete Form 5 templates' },
+  { name: PERMISSION_NAMES.WHATSAPP_TEMPLATES_VIEW, module: 'whatsappTemplates', description: 'View WhatsApp message templates' },
+  { name: PERMISSION_NAMES.WHATSAPP_TEMPLATES_CREATE, module: 'whatsappTemplates', description: 'Create WhatsApp message templates' },
+  { name: PERMISSION_NAMES.WHATSAPP_TEMPLATES_EDIT, module: 'whatsappTemplates', description: 'Edit WhatsApp message templates' },
+  { name: PERMISSION_NAMES.WHATSAPP_TEMPLATES_DELETE, module: 'whatsappTemplates', description: 'Delete WhatsApp message templates' },
 ]);

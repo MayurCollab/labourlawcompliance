@@ -37,6 +37,34 @@ export const clientFormSchema = z.object({
 
 export type ClientFormValues = z.infer<typeof clientFormSchema>;
 
+export const employeeFormSchema = z.object({
+  clientId: z.string({ error: 'Client is required' }).min(1, 'Client is required'),
+  employeeNo: z
+    .string({ error: 'Employee No is required' })
+    .trim()
+    .min(1, 'Employee No is required')
+    .max(64, 'Employee No cannot exceed 64 characters'),
+  employeeName: z.string().trim().max(200).optional(),
+  period: z
+    .string({ error: 'Period is required' })
+    .trim()
+    .regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM'),
+  state: z.string().trim().max(80).optional(),
+  ptGross: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) =>
+        value === undefined ||
+        value === '' ||
+        (!Number.isNaN(Number(value)) && Number(value) >= 0),
+      { message: 'Enter a valid amount' },
+    ),
+});
+
+export type EmployeeFormValues = z.infer<typeof employeeFormSchema>;
+
 export const ptSlabFormSchema = z
   .object({
     salaryFrom: z.coerce.number().int().min(0, 'Must be 0 or more'),

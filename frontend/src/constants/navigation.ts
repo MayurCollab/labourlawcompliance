@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LayoutTemplate,
   MessageCircle,
+  MessageSquare,
   Scale,
   Shield,
   ShieldCheck,
@@ -71,6 +72,12 @@ export const APP_NAV_ITEMS: SidebarMenuItem[] = [
     label: 'WhatsApp sends',
     icon: History,
     requiredPermission: PERMISSIONS.FILINGS_VIEW,
+  },
+  {
+    to: PATHS.whatsappTemplates,
+    label: 'WhatsApp templates',
+    icon: MessageSquare,
+    requiredPermission: PERMISSIONS.WHATSAPP_TEMPLATES_VIEW,
   },
   {
     to: PATHS.templates,

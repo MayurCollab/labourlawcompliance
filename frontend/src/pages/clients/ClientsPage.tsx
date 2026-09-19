@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Download, Plus } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { PermissionGate } from '@/components/common/PermissionGate';
@@ -22,6 +22,7 @@ import {
   RowActionsMenu,
 } from '@/components/tables/RowActionsMenu';
 import { PERMISSIONS } from '@/constants/permissions';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
 import {
   useClientsQuery,
@@ -87,6 +88,12 @@ export function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Client | null>(null);
   const [menuClientId, setMenuClientId] = useState<string | null>(null);
+
+  const debouncedSearchInput = useDebouncedValue(searchInput);
+  useEffect(() => {
+    setSearch(debouncedSearchInput.trim());
+    setPage(1);
+  }, [debouncedSearchInput]);
 
   const listParams: ListClientsParams = {
     page,
@@ -227,17 +234,32 @@ export function ClientsPage() {
           { label: 'Clients' },
         ]}
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            leftIcon={<Download className="size-4" />}
-            loading={exportMutation.isPending}
-            onClick={() => {
-              void exportMutation.mutateAsync(exportParams);
-            }}
-          >
-            Download Excel
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<Download className="size-4" />}
+              loading={exportMutation.isPending}
+              onClick={() => {
+                void exportMutation.mutateAsync(exportParams);
+              }}
+            >
+              Download Excel
+            </Button>
+            <PermissionGate permission={PERMISSIONS.CLIENTS_CREATE}>
+              <Button
+                size="sm"
+                leftIcon={<Plus className="size-4" />}
+                onClick={() => {
+                  setDrawerMode('create');
+                  setEditingClient(null);
+                  setDrawerOpen(true);
+                }}
+              >
+                Add client
+              </Button>
+            </PermissionGate>
+          </div>
         }
       />
 
@@ -361,19 +383,20 @@ export function ClientsPage() {
         client={editingClient}
         locations={locationsQuery.data ?? []}
         loading={createMutation.isPending || updateMutation.isPending}
-        onSubmit={(values) => {
+        onSubmit={(values, matchedClientId) => {
           const payload = toPayload(values);
-          if (drawerMode === 'create') {
-            createMutation.mutate(payload, {
-              onSuccess: () => setDrawerOpen(false),
-            });
+          const targetId =
+            drawerMode === 'edit' ? editingClient?.id : matchedClientId;
+          if (targetId) {
+            updateMutation.mutate(
+              { id: targetId, payload },
+              { onSuccess: () => setDrawerOpen(false) },
+            );
             return;
           }
-          if (!editingClient) return;
-          updateMutation.mutate(
-            { id: editingClient.id, payload },
-            { onSuccess: () => setDrawerOpen(false) },
-          );
+          createMutation.mutate(payload, {
+            onSuccess: () => setDrawerOpen(false),
+          });
         }}
       />
 

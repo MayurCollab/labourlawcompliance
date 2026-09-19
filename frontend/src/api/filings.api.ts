@@ -249,4 +249,14 @@ export const filingsApi = {
     >(`/api/v1/filings/${id}/whatsapp`, payload);
     return data.data;
   },
+
+  bulkSendWhatsApp: async (payload: {
+    ids: string[];
+    templateId: string;
+  }): Promise<BulkSendFilingWhatsAppResult> => {
+    const { data } = await axiosInstance.post<
+      ApiSuccessResponse<BulkSendFilingWhatsAppResult>
+    >('/api/v1/filings/bulk-whatsapp', payload);
+    return data.data;
+  },
 };

@@ -15,6 +15,7 @@ export const PATHS = {
   form5: '/form-5',
   form5Whatsapp: '/form-5/whatsapp',
   whatsappSends: '/whatsapp-sends',
+  whatsappTemplates: '/whatsapp-templates',
   templates: '/templates',
   ptSlabs: '/pt-slabs',
   /** Admin modules */

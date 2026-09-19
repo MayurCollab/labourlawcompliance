@@ -109,3 +109,12 @@ export const sendFilingWhatsApp = asyncHandler(async (req, res) => {
   );
   return sendSuccess(res, result, FILINGS_MESSAGES.WHATSAPP_SENT);
 });
+
+export const bulkSendFilingsWhatsApp = asyncHandler(async (req, res) => {
+  const report = await filingsService.bulkSendFilingsWhatsApp(
+    req.body.ids,
+    req.body.templateId,
+    req.user.id,
+  );
+  return sendSuccess(res, report, FILINGS_MESSAGES.BULK_WHATSAPP_SENT);
+});

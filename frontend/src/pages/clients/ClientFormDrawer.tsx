@@ -1,3 +1,5 @@
+import { useState, type FocusEvent } from 'react';
+
 import { Button } from '@/components/buttons';
 import { Drawer } from '@/components/dialogs/Drawer';
 import { FormWrapper } from '@/components/forms/FormWrapper';
@@ -5,6 +7,7 @@ import { Input } from '@/components/inputs/Input';
 import { Select } from '@/components/inputs/Select';
 import { Switch } from '@/components/inputs/Switch';
 import { Textarea } from '@/components/inputs/Textarea';
+import { useClientByCodeLookup } from '@/hooks/useClients';
 import type { Client, Location } from '@/types/client.types';
 import {
   clientFormSchema,
@@ -18,7 +21,12 @@ type ClientFormDrawerProps = {
   client?: Client | null;
   locations: Location[];
   loading?: boolean;
-  onSubmit: (values: ClientFormValues) => void;
+  /**
+   * `matchedClientId` is set when the user typed an existing client code in
+   * create mode and it was auto-resolved — the caller should update that
+   * client instead of creating a new one.
+   */
+  onSubmit: (values: ClientFormValues, matchedClientId: string | null) => void;
 };
 
 export function ClientFormDrawer({
@@ -69,12 +77,15 @@ function ClientFormBody({
   locations: Location[];
   loading: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: ClientFormValues) => void;
+  onSubmit: (values: ClientFormValues, matchedClientId: string | null) => void;
 }) {
   const locationOptions = locations.map((location) => ({
     label: location.name,
     value: location.name,
   }));
+
+  const [matchedClient, setMatchedClient] = useState<Client | null>(null);
+  const lookupMutation = useClientByCodeLookup();
 
   return (
     <FormWrapper<ClientFormValues>
@@ -95,14 +106,76 @@ function ClientFormBody({
         signatoryName: client?.signatoryName ?? '',
         includeEmployeesOnForm5: client?.includeEmployeesOnForm5 !== false,
       }}
-      onSubmit={onSubmit}
+      onSubmit={(values) => {
+        const isMatchCurrent =
+          mode === 'create' &&
+          matchedClient !== null &&
+          matchedClient.clientCode.trim().toUpperCase() ===
+            values.clientCode.trim().toUpperCase();
+        onSubmit(values, isMatchCurrent ? matchedClient!.id : null);
+      }}
     >
-      {(form) => (
+      {(form) => {
+        const codeField = form.register('clientCode');
+        const isMatchCurrent =
+          mode === 'create' &&
+          matchedClient !== null &&
+          matchedClient.clientCode.trim().toUpperCase() ===
+            (form.watch('clientCode') || '').trim().toUpperCase();
+
+        const handleCodeBlur = async (
+          event: FocusEvent<HTMLInputElement>,
+        ) => {
+          codeField.onBlur(event);
+          if (mode !== 'create') return;
+          const code = event.target.value.trim();
+          if (!code) {
+            setMatchedClient(null);
+            return;
+          }
+          const found = await lookupMutation
+            .mutateAsync(code)
+            .catch(() => null);
+          if (found) {
+            setMatchedClient(found);
+            form.reset({
+              clientCode: found.clientCode,
+              companyName: found.companyName,
+              locationName: found.location?.name ?? '',
+              draftName: found.draftName ?? '',
+              authorityName: found.authorityName ?? '',
+              address: found.address ?? '',
+              rcNumber: found.rcNumber ?? '',
+              contactNumber: found.contactNumber ?? '',
+              recipientName: found.recipientName ?? '',
+              fundCode: found.fundCode ?? '',
+              phyCode: found.phyCode ?? '',
+              status: found.status ?? '',
+              signatoryName: found.signatoryName ?? '',
+              includeEmployeesOnForm5: found.includeEmployeesOnForm5 !== false,
+            });
+          } else {
+            setMatchedClient(null);
+          }
+        };
+
+        return (
         <>
+          {isMatchCurrent ? (
+            <div className="rounded-md border border-amber-500/40 bg-amber-100 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+              Loaded existing client <strong>{matchedClient!.clientCode}</strong> —{' '}
+              {matchedClient!.companyName}. Saving will update this client.
+            </div>
+          ) : null}
           <Input
             label="Client code"
-            hint="Stable key from MasterSheet, e.g. C0001"
-            {...form.register('clientCode')}
+            hint={
+              mode === 'create'
+                ? 'Type an existing code to load and edit that client.'
+                : 'Stable key from MasterSheet, e.g. C0001'
+            }
+            {...codeField}
+            onBlur={handleCodeBlur}
             error={form.formState.errors.clientCode?.message}
           />
           <Input
@@ -190,11 +263,12 @@ function ClientFormBody({
               Cancel
             </Button>
             <Button type="submit" loading={loading}>
-              {mode === 'create' ? 'Create client' : 'Save'}
+              {mode === 'edit' || isMatchCurrent ? 'Save' : 'Create client'}
             </Button>
           </div>
         </>
-      )}
+        );
+      }}
     </FormWrapper>
   );
 }

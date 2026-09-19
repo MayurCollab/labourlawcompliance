@@ -9,6 +9,7 @@ import { PERMISSION_NAMES } from '../permissions/permissions.constants.js';
 import * as filingsController from './filings.controller.js';
 import {
   bulkGenerateFilingsSchema,
+  bulkSendFilingWhatsAppSchema,
   downloadFilingQuerySchema,
   generateFilingBodySchema,
   listFilingsQuerySchema,
@@ -163,6 +164,21 @@ router.post(
   checkPermission(PERMISSION_NAMES.FILINGS_SEND),
   validate({ params: idParamSchema, body: sendFilingWhatsAppSchema }),
   filingsController.sendFilingWhatsApp,
+);
+
+/**
+ * @openapi
+ * /filings/bulk-whatsapp:
+ *   post:
+ *     tags: [Filings]
+ *     summary: Send multiple Form 5 PDFs on WhatsApp in bulk
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post(
+  '/bulk-whatsapp',
+  checkPermission(PERMISSION_NAMES.FILINGS_SEND),
+  validate({ body: bulkSendFilingWhatsAppSchema }),
+  filingsController.bulkSendFilingsWhatsApp,
 );
 
 export default router;

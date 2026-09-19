@@ -11,6 +11,8 @@ export const FILINGS_CODES = Object.freeze({
   WHATSAPP_PHONE_INVALID: 'WHATSAPP_PHONE_INVALID',
   WHATSAPP_MEDIA_URL_MISSING: 'WHATSAPP_MEDIA_URL_MISSING',
   WHATSAPP_NOT_GENERATED: 'WHATSAPP_NOT_GENERATED',
+  WHATSAPP_TEMPLATE_FIELD_MISSING: 'WHATSAPP_TEMPLATE_FIELD_MISSING',
+  WHATSAPP_MISSING_FIELDS: 'WHATSAPP_MISSING_FIELDS',
 });
 
 export const FILINGS_MESSAGES = Object.freeze({
@@ -21,6 +23,7 @@ export const FILINGS_MESSAGES = Object.freeze({
   BULK_GENERATED: 'Bulk Form 5 generate finished.',
   OVERRIDES_UPDATED: 'Filing generate overrides saved.',
   WHATSAPP_SENT: 'Form 5 sent on WhatsApp successfully.',
+  BULK_WHATSAPP_SENT: 'Bulk WhatsApp send finished.',
 });
 
 export const GENERATE_STATUSES = Object.freeze({

@@ -37,6 +37,10 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   CLIENT_SOFT_DELETE: 'clients.soft_delete',
   CLIENT_EXPORT: 'clients.export',
 
+  EMPLOYEE_CREATE: 'employees.create',
+  EMPLOYEE_UPDATE: 'employees.update',
+  EMPLOYEE_SOFT_DELETE: 'employees.soft_delete',
+
   LOCATION_CREATE: 'locations.create',
   LOCATION_UPDATE: 'locations.update',
   LOCATION_SOFT_DELETE: 'locations.soft_delete',
@@ -57,6 +61,10 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   FILING_BULK_GENERATE: 'filings.bulk_generate',
   FILING_OVERRIDES_UPDATE: 'filings.overrides_update',
   FILING_WHATSAPP_SEND: 'filings.whatsapp_send',
+  FILING_BULK_WHATSAPP_SEND: 'filings.bulk_whatsapp_send',
+  WHATSAPP_TEMPLATE_CREATE: 'whatsappTemplates.create',
+  WHATSAPP_TEMPLATE_UPDATE: 'whatsappTemplates.update',
+  WHATSAPP_TEMPLATE_SOFT_DELETE: 'whatsappTemplates.soft_delete',
   WHATSAPP_SEND_DELETE: 'whatsappSends.delete',
   WHATSAPP_SEND_REFRESH: 'whatsappSends.refresh_status',
 
@@ -80,4 +88,5 @@ export const ENTITY_TYPES = Object.freeze({
   EMPLOYEE: 'Employee',
   TEMPLATE: 'Template',
   WHATSAPP_SEND: 'WhatsAppSend',
+  WHATSAPP_TEMPLATE: 'WhatsAppTemplate',
 });

@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
+import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
+import { PermissionGate } from '@/components/common/PermissionGate';
+import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { FilterPanel, filterIds, type FilterValues } from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Input } from '@/components/inputs/Input';
@@ -13,10 +17,45 @@ import {
   type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
+import {
+  RowActionItem,
+  RowActionsMenu,
+} from '@/components/tables/RowActionsMenu';
+import { PERMISSIONS } from '@/constants/permissions';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { usePermission } from '@/hooks/usePermission';
 import { useClientOptionsQuery } from '@/hooks/useClients';
-import { useEmployeesQuery } from '@/hooks/useEmployees';
+import {
+  useCreateEmployeeMutation,
+  useDeleteEmployeeMutation,
+  useEmployeesQuery,
+  useUpdateEmployeeMutation,
+} from '@/hooks/useEmployees';
+import { EmployeeFormDrawer } from '@/pages/employees/EmployeeFormDrawer';
 import { PATHS } from '@/routes/paths';
-import type { Employee, ListEmployeesParams } from '@/types/employee.types';
+import type {
+  Employee,
+  EmployeePayload,
+  ListEmployeesParams,
+} from '@/types/employee.types';
+import type { EmployeeFormValues } from '@/validations/masters.validation';
+
+const emptyToNull = (value?: string) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
+const toPayload = (values: EmployeeFormValues): EmployeePayload => ({
+  clientId: values.clientId,
+  employeeNo: values.employeeNo,
+  employeeName: emptyToNull(values.employeeName),
+  period: values.period,
+  state: emptyToNull(values.state),
+  ptGross:
+    values.ptGross === undefined || values.ptGross.trim() === ''
+      ? null
+      : Number(values.ptGross),
+});
 
 const formatAmount = (value: number | null) =>
   value === null || value === undefined ? '—' : value.toLocaleString('en-IN');
@@ -30,6 +69,7 @@ const emptyFilters: FilterValues = {
  * Employee month snapshots from salary ingest. Unmatched PHY_CODE rows stay here.
  */
 export function EmployeesPage() {
+  const { hasPermission } = usePermission();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState('');
@@ -44,8 +84,26 @@ export function EmployeesPage() {
     sortBy: 'createdAt',
     sortOrder: 'desc',
   });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create');
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(
+    null,
+  );
+  const [pendingDelete, setPendingDelete] = useState<Employee | null>(null);
+  const [menuEmployeeId, setMenuEmployeeId] = useState<string | null>(null);
 
-  const optionsQuery = useClientOptionsQuery();
+  const debouncedSearchInput = useDebouncedValue(searchInput);
+  useEffect(() => {
+    setSearch(debouncedSearchInput.trim());
+    setPage(1);
+  }, [debouncedSearchInput]);
+
+  const optionsQuery = useClientOptionsQuery({
+    enabled: hasPermission(PERMISSIONS.EMPLOYEES_VIEW),
+  });
+  const createMutation = useCreateEmployeeMutation();
+  const updateMutation = useUpdateEmployeeMutation();
+  const deleteMutation = useDeleteEmployeeMutation();
   const clientIds = filterIds(appliedFilters.clientIds);
   const unmatchedValue =
     typeof appliedFilters.unmatched === 'string'
@@ -127,8 +185,49 @@ export function EmployeesPage() {
             <Badge variant="success">Matched</Badge>
           ),
       },
+      {
+        id: 'actions',
+        header: '',
+        className: 'text-right',
+        width: 72,
+        minWidth: 72,
+        maxWidth: 72,
+        cell: (row) => {
+          const open = menuEmployeeId === row.id;
+          return (
+            <RowActionsMenu
+              open={open}
+              onOpenChange={(next) => setMenuEmployeeId(next ? row.id : null)}
+            >
+              <PermissionGate permission={PERMISSIONS.EMPLOYEES_EDIT}>
+                <RowActionItem
+                  onClick={() => {
+                    setMenuEmployeeId(null);
+                    setDrawerMode('edit');
+                    setEditingEmployee(row);
+                    setDrawerOpen(true);
+                  }}
+                >
+                  Edit
+                </RowActionItem>
+              </PermissionGate>
+              <PermissionGate permission={PERMISSIONS.EMPLOYEES_DELETE}>
+                <RowActionItem
+                  destructive
+                  onClick={() => {
+                    setMenuEmployeeId(null);
+                    setPendingDelete(row);
+                  }}
+                >
+                  Delete
+                </RowActionItem>
+              </PermissionGate>
+            </RowActionsMenu>
+          );
+        },
+      },
     ],
-    [],
+    [menuEmployeeId],
   );
 
   const clientOptions = (optionsQuery.data?.clients ?? []).map((client) => ({
@@ -145,6 +244,21 @@ export function EmployeesPage() {
           { label: 'Home', href: PATHS.home },
           { label: 'Employees' },
         ]}
+        actions={
+          <PermissionGate permission={PERMISSIONS.EMPLOYEES_CREATE}>
+            <Button
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => {
+                setDrawerMode('create');
+                setEditingEmployee(null);
+                setDrawerOpen(true);
+              }}
+            >
+              Add employee
+            </Button>
+          </PermissionGate>
+        }
       />
 
       <FilterPanel
@@ -227,6 +341,52 @@ export function EmployeesPage() {
         emptyTitle="No employees"
         emptyDescription="Upload a salary workbook to populate this list."
         fullscreenTitle="Employees"
+      />
+
+      <EmployeeFormDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        mode={drawerMode}
+        employee={editingEmployee}
+        clientOptions={clientOptions}
+        loading={createMutation.isPending || updateMutation.isPending}
+        onSubmit={(values, matchedEmployeeId) => {
+          const payload = toPayload(values);
+          const targetId =
+            drawerMode === 'edit' ? editingEmployee?.id : matchedEmployeeId;
+          if (targetId) {
+            updateMutation.mutate(
+              { id: targetId, payload },
+              { onSuccess: () => setDrawerOpen(false) },
+            );
+            return;
+          }
+          createMutation.mutate(payload, {
+            onSuccess: () => setDrawerOpen(false),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="Delete employee row?"
+        message={
+          pendingDelete
+            ? `Soft-delete ${pendingDelete.employeeNo} (${pendingDelete.period})? It will no longer appear in the list.`
+            : ''
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteMutation.mutate(pendingDelete.id, {
+            onSuccess: () => setPendingDelete(null),
+          });
+        }}
       />
     </div>
   );

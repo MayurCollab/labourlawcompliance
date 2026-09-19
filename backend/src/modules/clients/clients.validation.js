@@ -17,7 +17,7 @@ const optionalText = (max) =>
     .transform((value) => (value === '' ? null : value));
 
 export const listClientsQuerySchema = paginationQuerySchema.extend({
-  search: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(20000).optional(),
   locationId: objectIdSchema.optional(),
   locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),
@@ -25,8 +25,16 @@ export const listClientsQuerySchema = paginationQuerySchema.extend({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+export const clientCodeParamSchema = z.object({
+  clientCode: z
+    .string({ error: 'Client code is required' })
+    .trim()
+    .min(1, 'Client code is required')
+    .max(32, 'Client code cannot exceed 32 characters'),
+});
+
 export const exportClientsQuerySchema = z.object({
-  search: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(20000).optional(),
   locationId: objectIdSchema.optional(),
   locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),

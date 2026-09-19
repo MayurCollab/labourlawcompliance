@@ -16,8 +16,7 @@ import {
 } from './whatsappSends.constants.js';
 import { toWhatsAppSendDto, toWhatsAppSendListDto } from './whatsappSends.dto.js';
 import * as whatsappSendsRepository from './whatsappSends.repository.js';
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+import { escapeRegex, exactMatchRegex, splitSearchTokens } from '../../utils/searchTokens.js';
 
 const pickFirstString = (...candidates) => {
   for (const value of candidates) {
@@ -178,7 +177,13 @@ export const recordWhatsAppSend = async (input) => {
       periodLabel: input.periodLabel ?? null,
       filename: input.filename ?? null,
       mediaUrl: input.mediaUrl ?? null,
-      templateName: input.templateName ?? config.msg91.templateName ?? null,
+      templateName:
+        input.templateName ??
+        input.templateSnapshot?.msg91TemplateName ??
+        config.msg91.templateName ??
+        null,
+      whatsappTemplate: input.whatsappTemplateId ?? null,
+      templateSnapshot: input.templateSnapshot ?? null,
       status: input.status || WHATSAPP_SEND_STATUSES.ACCEPTED,
       requestId: input.requestId ?? requestId,
       providerMessageId: input.providerMessageId ?? providerMessageId,
@@ -225,7 +230,13 @@ export const listWhatsAppSends = async (query) => {
   const filter = {};
 
   if (search) {
-    const regex = { $regex: escapeRegex(search), $options: 'i' };
+    const tokens = splitSearchTokens(search);
+    // Pasted list (e.g. client codes or company names copied from Excel) —
+    // exact match per field, checked across every searchable field.
+    const regex =
+      tokens.length > 1
+        ? exactMatchRegex(tokens)
+        : { $regex: escapeRegex(search), $options: 'i' };
     filter.$or = [
       { phone: regex },
       { clientCode: regex },

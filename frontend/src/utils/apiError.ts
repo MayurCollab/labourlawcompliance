@@ -7,6 +7,6 @@ export const getApiErrorMessage = (
   error: unknown,
   fallback = 'Something went wrong',
 ): string => {
-  const axiosError = error as AxiosError<ApiErrorResponse>;
-  return axiosError.response?.data?.message || fallback;
+  const axiosError = error as AxiosError<ApiErrorResponse> | null | undefined;
+  return axiosError?.response?.data?.message || fallback;
 };

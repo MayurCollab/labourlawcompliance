@@ -42,18 +42,33 @@ export const findWhatsAppSendForWebhook = async ({
   providerMessageId,
   phone,
 }) => {
+  // A bulk MSG91 request id is shared by every recipient in that call, so
+  // narrow by phone first and never guess between several rows.
   if (requestId) {
-    const byRequest = await WhatsAppSend.findOne({ requestId }).sort({
-      sentAt: -1,
-    });
-    if (byRequest) return byRequest;
+    if (phone) {
+      const exact = await WhatsAppSend.findOne({ requestId, phone }).sort({
+        sentAt: -1,
+      });
+      if (exact) return exact;
+    }
+    const byRequest = await WhatsAppSend.find({ requestId })
+      .sort({ sentAt: -1 })
+      .limit(2);
+    if (byRequest.length === 1) return byRequest[0];
   }
 
   if (providerMessageId) {
-    const byProvider = await WhatsAppSend.findOne({
-      providerMessageId,
-    }).sort({ sentAt: -1 });
-    if (byProvider) return byProvider;
+    if (phone) {
+      const exact = await WhatsAppSend.findOne({
+        providerMessageId,
+        phone,
+      }).sort({ sentAt: -1 });
+      if (exact) return exact;
+    }
+    const byProvider = await WhatsAppSend.find({ providerMessageId })
+      .sort({ sentAt: -1 })
+      .limit(2);
+    if (byProvider.length === 1) return byProvider[0];
   }
 
   if (phone) {

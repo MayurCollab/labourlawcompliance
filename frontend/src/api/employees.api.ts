@@ -1,8 +1,12 @@
 import axiosInstance from '@/api/axiosInstance';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type {
+  Employee,
+  EmployeeLookupParams,
+  EmployeePayload,
   ListEmployeesParams,
   ListEmployeesResult,
+  UpdateEmployeePayload,
 } from '@/types/employee.types';
 
 const toQuery = (params: ListEmployeesParams) => {
@@ -30,5 +34,40 @@ export const employeesApi = {
       ApiSuccessResponse<ListEmployeesResult>
     >('/api/v1/employees', { params: toQuery(params) });
     return data.data;
+  },
+
+  getById: async (id: string): Promise<Employee> => {
+    const { data } = await axiosInstance.get<
+      ApiSuccessResponse<{ employee: Employee }>
+    >(`/api/v1/employees/${id}`);
+    return data.data.employee;
+  },
+
+  lookup: async (params: EmployeeLookupParams): Promise<Employee | null> => {
+    const { data } = await axiosInstance.get<
+      ApiSuccessResponse<{ employee: Employee | null }>
+    >('/api/v1/employees/lookup', { params });
+    return data.data.employee;
+  },
+
+  create: async (payload: EmployeePayload): Promise<Employee> => {
+    const { data } = await axiosInstance.post<
+      ApiSuccessResponse<{ employee: Employee }>
+    >('/api/v1/employees', payload);
+    return data.data.employee;
+  },
+
+  update: async (
+    id: string,
+    payload: UpdateEmployeePayload,
+  ): Promise<Employee> => {
+    const { data } = await axiosInstance.patch<
+      ApiSuccessResponse<{ employee: Employee }>
+    >(`/api/v1/employees/${id}`, payload);
+    return data.data.employee;
+  },
+
+  remove: async (id: string): Promise<void> => {
+    await axiosInstance.delete(`/api/v1/employees/${id}`);
   },
 };

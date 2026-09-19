@@ -1,4 +1,10 @@
+import AppError from '../../utils/AppError.js';
 import { sanitizeUserHtml } from '../../utils/sanitize.js';
+import {
+  ACTIVITY_ACTIONS,
+  ENTITY_TYPES,
+} from '../activity/activity.constants.js';
+import { recordActivity } from '../activity/activity.service.js';
 import { normalizeClientCode } from '../clients/clients.constants.js';
 import * as clientsRepository from '../clients/clients.repository.js';
 import { periodToDate, resolvePTax } from '../filings/ptCompute.js';
@@ -13,10 +19,10 @@ import {
   parseAmount,
   stringifyCell,
 } from '../uploads/masterParse.js';
+import { EMPLOYEES_CODES } from './employees.constants.js';
 import { toEmployeeDto, toEmployeeListDto } from './employees.dto.js';
 import * as employeesRepository from './employees.repository.js';
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+import { escapeRegex, exactMatchRegex, splitSearchTokens } from '../../utils/searchTokens.js';
 
 const blankToNull = (value) => {
   if (value === undefined) return undefined;
@@ -43,7 +49,13 @@ export const listEmployees = async (query) => {
 
   const filter = {};
   if (search) {
-    const regex = { $regex: escapeRegex(search), $options: 'i' };
+    const tokens = splitSearchTokens(search);
+    // Pasted list (EMPNOs or names copied from Excel) — exact match per
+    // field, checked across both fields so a list of names works too.
+    const regex =
+      tokens.length > 1
+        ? exactMatchRegex(tokens)
+        : { $regex: escapeRegex(search), $options: 'i' };
     filter.$or = [{ employeeNo: regex }, { employeeName: regex }];
   }
   if (period) filter.period = period;
@@ -81,6 +93,190 @@ export const listEmployees = async (query) => {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     },
   };
+};
+
+const findEmployeeOrFail = async (id) => {
+  const employee = await employeesRepository.findEmployeeById(id);
+  if (!employee) {
+    throw new AppError('Employee not found', 404, {
+      code: EMPLOYEES_CODES.EMPLOYEE_NOT_FOUND,
+    });
+  }
+  return employee;
+};
+
+const findClientOrFail = async (clientId) => {
+  const client = await clientsRepository.findClientById(clientId);
+  if (!client) {
+    throw new AppError('Client not found', 404, {
+      code: EMPLOYEES_CODES.CLIENT_NOT_FOUND,
+    });
+  }
+  return client;
+};
+
+const assertKeyAvailable = async (
+  employeeNo,
+  phyCode,
+  period,
+  excludeId = null,
+) => {
+  const existing = await employeesRepository.findEmployeeByKey(
+    employeeNo,
+    phyCode || '',
+    period,
+  );
+  if (existing && String(existing.id) !== String(excludeId)) {
+    throw new AppError(
+      'An employee with this Employee No already exists for this client and period',
+      409,
+      { code: EMPLOYEES_CODES.EMPLOYEE_KEY_IN_USE },
+    );
+  }
+};
+
+export const getEmployee = async (id) => {
+  const employee = await findEmployeeOrFail(id);
+  return toEmployeeDto(employee);
+};
+
+/**
+ * Silent lookup for the Add Employee form: an existing (Employee No, Client,
+ * Period) combination autofills the rest of the form instead of failing on
+ * submit with 409.
+ */
+export const findEmployeeForLookup = async ({
+  employeeNo,
+  clientId,
+  period,
+}) => {
+  const client = await clientsRepository.findClientById(clientId);
+  if (!client) return null;
+  const phyCode = normalizePhyCode(client.phyCode) || '';
+  const employee = await employeesRepository.findEmployeeByKey(
+    String(employeeNo).trim(),
+    phyCode,
+    period,
+  );
+  return employee ? toEmployeeDto(employee) : null;
+};
+
+export const createEmployee = async (data, actorId) => {
+  const client = await findClientOrFail(data.clientId);
+  const phyCode = normalizePhyCode(client.phyCode) || '';
+  const employeeNo = data.employeeNo.trim();
+
+  await assertKeyAvailable(employeeNo, phyCode, data.period);
+
+  const slabs = await ptSlabsService.listEffectiveSlabs(
+    periodToDate(data.period) || new Date(),
+  );
+  const ptGross = data.ptGross ?? null;
+  const pTax = resolvePTax(slabs, ptGross);
+
+  const employee = await employeesRepository.createEmployee({
+    client: client.id,
+    clientCode: client.clientCode,
+    employeeNo,
+    employeeName: blankToNull(data.employeeName) ?? null,
+    phyCode,
+    period: data.period,
+    periodLabel: blankToNull(data.periodLabel) ?? null,
+    locationName: client.location?.name ?? null,
+    state: blankToNull(data.state) ?? 'Gujarat',
+    ptGross,
+    pTax,
+    unmatched: false,
+    unmatchedReason: null,
+    createdBy: actorId,
+  });
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.EMPLOYEE_CREATE,
+    entityType: ENTITY_TYPES.EMPLOYEE,
+    entityId: employee.id,
+    changes: { employeeNo, clientCode: client.clientCode, period: data.period },
+  });
+
+  return getEmployee(employee.id);
+};
+
+export const updateEmployee = async (id, data, actorId) => {
+  const employee = await findEmployeeOrFail(id);
+
+  let client = null;
+  if (data.clientId !== undefined) {
+    client = await findClientOrFail(data.clientId);
+  }
+
+  const phyCode = client
+    ? normalizePhyCode(client.phyCode) || ''
+    : employee.phyCode;
+  const employeeNo =
+    data.employeeNo !== undefined ? data.employeeNo.trim() : employee.employeeNo;
+  const period = data.period !== undefined ? data.period : employee.period;
+
+  if (
+    data.employeeNo !== undefined ||
+    data.clientId !== undefined ||
+    data.period !== undefined
+  ) {
+    await assertKeyAvailable(employeeNo, phyCode, period, id);
+  }
+
+  if (client) {
+    employee.client = client.id;
+    employee.clientCode = client.clientCode;
+    employee.phyCode = phyCode;
+    employee.locationName = client.location?.name ?? employee.locationName;
+    employee.unmatched = false;
+    employee.unmatchedReason = null;
+  }
+  employee.employeeNo = employeeNo;
+  employee.period = period;
+  if (data.employeeName !== undefined) {
+    employee.employeeName = blankToNull(data.employeeName);
+  }
+  if (data.periodLabel !== undefined) {
+    employee.periodLabel = blankToNull(data.periodLabel);
+  }
+  if (data.state !== undefined) {
+    employee.state = blankToNull(data.state) ?? 'Gujarat';
+  }
+  if (data.ptGross !== undefined) {
+    employee.ptGross = data.ptGross;
+    const slabs = await ptSlabsService.listEffectiveSlabs(
+      periodToDate(period) || new Date(),
+    );
+    employee.pTax = resolvePTax(slabs, data.ptGross);
+  }
+
+  employee.updatedBy = actorId;
+  const changedFields = employee
+    .modifiedPaths()
+    .filter((f) => f !== 'updatedBy');
+  await employeesRepository.saveEmployee(employee);
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.EMPLOYEE_UPDATE,
+    entityType: ENTITY_TYPES.EMPLOYEE,
+    entityId: employee.id,
+    changes: { fields: changedFields, employeeNo: employee.employeeNo },
+  });
+
+  return getEmployee(employee.id);
+};
+
+export const deleteEmployee = async (id, actorId) => {
+  const employee = await findEmployeeOrFail(id);
+  await employee.softDelete(actorId);
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.EMPLOYEE_SOFT_DELETE,
+    entityType: ENTITY_TYPES.EMPLOYEE,
+    entityId: employee.id,
+    changes: { employeeNo: employee.employeeNo, period: employee.period },
+  });
 };
 
 /**

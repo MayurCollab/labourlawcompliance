@@ -94,6 +94,10 @@ const WhatsAppSendsPage = lazyPage(
   () => import('@/pages/whatsappSends/WhatsAppSendsPage'),
   'WhatsAppSendsPage',
 );
+const WhatsAppTemplatesPage = lazyPage(
+  () => import('@/pages/whatsappTemplates/WhatsAppTemplatesPage'),
+  'WhatsAppTemplatesPage',
+);
 const TemplatesPage = lazyPage(
   () => import('@/pages/templates/TemplatesPage'),
   'TemplatesPage',
@@ -198,6 +202,17 @@ export const router = createBrowserRouter(
               <Route
                 path={PATHS.whatsappSends}
                 element={<WhatsAppSendsPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <PermissionRoute permission={PERMISSIONS.WHATSAPP_TEMPLATES_VIEW} />
+              }
+            >
+              <Route
+                path={PATHS.whatsappTemplates}
+                element={<WhatsAppTemplatesPage />}
               />
             </Route>
 

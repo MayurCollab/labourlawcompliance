@@ -71,6 +71,17 @@ const whatsappSendSchema = new mongoose.Schema(
       default: null,
       maxlength: [120, 'Template name cannot exceed 120 characters'],
     },
+    whatsappTemplate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'WhatsAppTemplate',
+      default: null,
+      index: true,
+    },
+    /** Template label/name/variables/body as they were at send time. */
+    templateSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     status: {
       type: String,
       enum: WHATSAPP_SEND_STATUS_VALUES,

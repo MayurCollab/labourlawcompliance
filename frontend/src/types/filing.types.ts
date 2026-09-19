@@ -174,6 +174,7 @@ export type BulkGeneratePayload = {
 };
 
 export type SendFilingWhatsAppPayload = {
+  templateId: string;
   phone?: string;
   savePhone?: boolean;
   recipientName?: string;
@@ -184,6 +185,13 @@ export type SendFilingWhatsAppResult = {
   filing: Filing;
   phone: string;
   msg91: unknown;
+};
+
+export type BulkSendFilingWhatsAppResult = {
+  sent: number;
+  failed: number;
+  skipped: number;
+  errors: Array<{ clientCode: string; message: string }>;
 };
 
 export type BulkGenerateRow = {

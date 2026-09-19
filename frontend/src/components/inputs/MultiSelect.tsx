@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,6 +18,7 @@ import {
   fieldLabelClassName,
 } from '@/components/inputs/fieldStyles';
 import type { SelectOption } from '@/components/inputs/Select';
+import { splitSearchTokens } from '@/lib/searchTokens';
 import { cn } from '@/lib/utils';
 
 export type MultiSelectProps = {
@@ -163,6 +165,41 @@ export function MultiSelect({
     onChange([...value, optionValue]);
   };
 
+  /**
+   * Pasting a column of codes copied from Excel (e.g. client codes) selects
+   * every option that matches one of the tokens instead of filtering to a
+   * single (unmatched) multi-line string.
+   */
+  const handleSearchPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const text = event.clipboardData.getData('text');
+    if (!/[\n\r,;\t]/.test(text)) return;
+    const tokens = splitSearchTokens(text);
+    if (tokens.length <= 1) return;
+
+    const matched = new Set<string>();
+    for (const token of tokens) {
+      const needle = token.toLowerCase();
+      const match = options.find((option) => {
+        const label = option.label.toLowerCase();
+        const code = label.split('·')[0].trim();
+        return (
+          code === needle ||
+          label === needle ||
+          option.value.toLowerCase() === needle
+        );
+      });
+      if (match) matched.add(match.value);
+    }
+
+    if (matched.size === 0) return;
+
+    event.preventDefault();
+    const next = new Set(value);
+    for (const optionValue of matched) next.add(optionValue);
+    onChange([...next]);
+    setQuery('');
+  };
+
   const toggleFiltered = () => {
     if (allFilteredSelected) {
       const remove = new Set(selectableFiltered.map((option) => option.value));
@@ -204,6 +241,7 @@ export function MultiSelect({
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  onPaste={handleSearchPaste}
                   placeholder={searchPlaceholder}
                   className="h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   aria-label={searchPlaceholder}

@@ -21,6 +21,7 @@ import {
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery } from '@/hooks/useClients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   filingsQueryKeys,
   useDownloadFilingMutation,
@@ -93,6 +94,13 @@ export function FilingsPage() {
     null,
   );
   const [bulkDownloading, setBulkDownloading] = useState(false);
+
+  const debouncedSearchInput = useDebouncedValue(searchInput);
+  useEffect(() => {
+    setSearch(debouncedSearchInput.trim());
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [debouncedSearchInput]);
 
   const queryClient = useQueryClient();
   const clientsQuery = useClientOptionsQuery();

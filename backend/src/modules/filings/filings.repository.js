@@ -28,7 +28,10 @@ export const countFilings = (filter = {}) => Filing.countDocuments(filter);
 export const findFilingById = (id) =>
   Filing.findById(id).populate(CLIENT_POPULATE);
 
-export const findFilingByClientAndPeriod = (clientId, period) =>
+export const findFilingsByIds = (ids) =>
+  Filing.find({ _id: { $in: ids } }).populate(CLIENT_POPULATE);
+
+export const findFilingByClientAndPeriod =(clientId, period) =>
   Filing.findOne({ client: clientId, period });
 
 /** Preload filings for one or more periods during MasterSheet import. */
