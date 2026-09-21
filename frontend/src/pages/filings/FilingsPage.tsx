@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { LayoutTemplate } from 'lucide-react';
 
 import { filingsApi } from '@/api/filings.api';
 import { Button } from '@/components/buttons';
@@ -30,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { BulkGenerateModal } from '@/pages/filings/BulkGenerateModal';
 import { FilingComputeDrawer } from '@/pages/filings/FilingComputeDrawer';
+import { Form5TemplatesModal } from '@/pages/filings/Form5TemplatesModal';
 import { PATHS } from '@/routes/paths';
 import type {
   BulkGeneratePayload,
@@ -94,6 +96,7 @@ export function FilingsPage() {
     null,
   );
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
 
   const debouncedSearchInput = useDebouncedValue(searchInput);
   useEffect(() => {
@@ -443,6 +446,18 @@ export function FilingsPage() {
           { label: 'Home', href: PATHS.home },
           { label: 'Form 5' },
         ]}
+        actions={
+          <PermissionGate permission={PERMISSIONS.TEMPLATES_VIEW}>
+            <Button
+              type="button"
+              variant="outline"
+              leftIcon={<LayoutTemplate className="size-4" />}
+              onClick={() => setTemplatesModalOpen(true)}
+            >
+              View Templates
+            </Button>
+          </PermissionGate>
+        }
       />
 
       <FilterPanel
@@ -665,6 +680,11 @@ export function FilingsPage() {
             queryKey: filingsQueryKeys.all,
           });
         }}
+      />
+
+      <Form5TemplatesModal
+        open={templatesModalOpen}
+        onOpenChange={setTemplatesModalOpen}
       />
     </div>
   );

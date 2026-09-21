@@ -18,6 +18,10 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+/** Turns a literal `\n` escape in a single-line .env value into a real newline. */
+const unescapeEnvNewlines = (value) =>
+  value ? String(value).replace(/\\n/g, '\n') : '';
+
 const env = process.env.NODE_ENV || 'development';
 const storageDriver = process.env.STORAGE_DRIVER || (env === 'test' ? 'local' : 's3');
 
@@ -116,6 +120,28 @@ const config = Object.freeze({
       process.env.MSG91_TEMPLATE_NAMESPACE ||
       'f81e39d2_346b_4801_8a3d_b74b0141f1e2',
     templateLanguage: process.env.MSG91_TEMPLATE_LANGUAGE || 'en',
+    /**
+     * The one-variable approved template every WhatsApp template created
+     * through the app targets (name/namespace/language, no fallback — must
+     * be set from the MSG91 dashboard before a template can be created).
+     */
+    genericTemplate: {
+      name: process.env.MSG91_GENERIC_TEMPLATE_NAME || '',
+      namespace: process.env.MSG91_GENERIC_TEMPLATE_NAMESPACE || '',
+      language: process.env.MSG91_GENERIC_TEMPLATE_LANGUAGE || 'en',
+      /**
+       * The fixed wording MSG91 wraps around the one variable on its own
+       * side (its approved template is literally "Hii {1},\n\nThank you") —
+       * never sent by us, shown only so the editor's preview matches what
+       * the recipient actually receives instead of doubling it up.
+       * `\n` in the env value is a literal escape sequence, unescaped here
+       * rather than relying on dotenv's own quoting rules.
+       */
+      prefix: unescapeEnvNewlines(process.env.MSG91_GENERIC_TEMPLATE_PREFIX) || 'Hii',
+      suffix:
+        unescapeEnvNewlines(process.env.MSG91_GENERIC_TEMPLATE_SUFFIX) ||
+        ',\n\nThank you',
+    },
     /** Max recipients per MSG91 bulk request (to_and_components entries). */
     bulkChunkSize: Number(process.env.MSG91_BULK_CHUNK_SIZE) || 300,
     apiUrl:

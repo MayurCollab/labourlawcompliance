@@ -33,11 +33,13 @@ import * as ptSlabsService from '../ptSlabs/ptSlabs.service.js';
 import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
 import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
 import * as whatsappTemplatesService from '../whatsappTemplates/whatsappTemplates.service.js';
+import { WHATSAPP_BODY_MODES } from '../whatsappTemplates/whatsappTemplates.constants.js';
 import {
   buildWhatsAppSourceData,
   resolveWhatsAppMessage,
   toTemplateSnapshot,
   missingFieldsMessage,
+  missingCustomValues,
 } from '../whatsappTemplates/whatsappTemplates.resolve.js';
 import { FILINGS_CODES, GENERATE_STATUSES } from './filings.constants.js';
 import { toFilingDto, toFilingListDto } from './filings.dto.js';
@@ -1120,37 +1122,53 @@ const clientRefId = (client) => {
 };
 
 /**
+ * Positional templates (Template 1's shape) are what MSG91 approved with a
+ * document header — the whole point of the Form 5 flow, so they always
+ * attach the generated PDF. A 'single' mode template targets the generic
+ * MSG91 template, which is plain text with no header slot at all — MSG91
+ * rejects a document header on it outright, so it must never attach one.
+ */
+const templateAttachesDocument = (template) =>
+  template.bodyMode !== WHATSAPP_BODY_MODES.SINGLE;
+
+/**
  * Send the latest generated Form 5 PDF on WhatsApp via MSG91.
  * Uses the public S3 object URL stored on generatedFile.storedPath.
- * Requires a WhatsApp template to be selected.
+ * Requires a WhatsApp template to be selected. A text-only (single-body)
+ * template sends without the PDF — it has no document header to put it in.
  */
 export const sendFilingWhatsApp = async (id, body, actorId) => {
   const filing = await findFilingOrFail(id);
 
-  if (
-    filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
-    !filing.generatedFile?.storedPath
-  ) {
-    throw new AppError(
-      'Generate the Form 5 PDF before sending on WhatsApp.',
-      400,
-      { code: FILINGS_CODES.WHATSAPP_NOT_GENERATED },
-    );
-  }
-
-  const mediaUrl = String(filing.generatedFile.storedPath || '').trim();
-  if (!/^https?:\/\//i.test(mediaUrl)) {
-    throw new AppError(
-      'Generated file has no public S3 URL. Use S3 storage for WhatsApp send.',
-      400,
-      { code: FILINGS_CODES.WHATSAPP_MEDIA_URL_MISSING },
-    );
-  }
-
-  // Load the selected WhatsApp template (must be active)
+  // Load the selected WhatsApp template (must be active) — its shape decides
+  // whether a generated PDF is required at all.
   const template = await whatsappTemplatesService.getActiveTemplateOrFail(
     body.templateId,
   );
+  const needsDocument = templateAttachesDocument(template);
+
+  let mediaUrl = null;
+  if (needsDocument) {
+    if (
+      filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
+      !filing.generatedFile?.storedPath
+    ) {
+      throw new AppError(
+        'Generate the Form 5 PDF before sending on WhatsApp.',
+        400,
+        { code: FILINGS_CODES.WHATSAPP_NOT_GENERATED },
+      );
+    }
+
+    mediaUrl = String(filing.generatedFile.storedPath || '').trim();
+    if (!/^https?:\/\//i.test(mediaUrl)) {
+      throw new AppError(
+        'Generated file has no public S3 URL. Use S3 storage for WhatsApp send.',
+        400,
+        { code: FILINGS_CODES.WHATSAPP_MEDIA_URL_MISSING },
+      );
+    }
+  }
 
   const rawPhone =
     body?.phone !== undefined && body?.phone !== null && String(body.phone).trim()
@@ -1188,8 +1206,12 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     recipientName: rawRecipientName,
   });
 
-  // Resolve template with source data
-  const { bodyValues, missing } = resolveWhatsAppMessage(template, sourceData);
+  // Resolve template with source data + any text typed for custom variables
+  const { bodyValues, missing } = resolveWhatsAppMessage(
+    template,
+    sourceData,
+    body?.customValues,
+  );
 
   if (missing.length > 0) {
     throw new AppError(missingFieldsMessage(missing), 400, {
@@ -1211,7 +1233,9 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     await clientsService.updateClient(clientId, clientPatch, actorId);
   }
 
-  const filename = ensurePdfFilename(filing.generatedFile.filename);
+  const filename = needsDocument
+    ? ensurePdfFilename(filing.generatedFile.filename)
+    : null;
   const templateSnapshot = toTemplateSnapshot(template);
 
   const sendLedgerBase = {
@@ -1303,10 +1327,26 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
  * Validates all filings, builds one MSG91 bulk call per chunk, and reports
  * sent/failed/skipped counts with per-filing error details.
  */
-export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
-  // Load template once (must be active)
+export const bulkSendFilingsWhatsApp = async (
+  ids,
+  templateId,
+  actorId,
+  customValues = {},
+) => {
+  // Load template once (must be active) — its shape decides whether a
+  // generated PDF is required per filing at all.
   const template = await whatsappTemplatesService.getActiveTemplateOrFail(templateId);
   const templateSnapshot = toTemplateSnapshot(template);
+  const needsDocument = templateAttachesDocument(template);
+
+  // Custom text is chosen once for the whole batch, so a missing value is a
+  // problem with the send itself — fail up front instead of skipping every row.
+  const missingCustom = missingCustomValues(template, customValues);
+  if (missingCustom.length > 0) {
+    throw new AppError(missingFieldsMessage(missingCustom), 400, {
+      code: FILINGS_CODES.WHATSAPP_MISSING_FIELDS,
+    });
+  }
 
   // Load all filings
   const filings = await filingsRepository.findFilingsByIds(ids);
@@ -1325,27 +1365,31 @@ export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
   for (const filing of filings) {
     const clientCode = filing.clientCode || 'N/A';
 
-    // Check if generated
-    if (
-      filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
-      !filing.generatedFile?.storedPath
-    ) {
-      skipped.push(filing.id);
-      errors.push({
-        clientCode,
-        message: 'Form 5 not generated',
-      });
-      continue;
-    }
+    // A text-only template has no document header — nothing to generate or
+    // attach, so these checks only apply when the template needs one.
+    let mediaUrl = null;
+    if (needsDocument) {
+      if (
+        filing.generateStatus !== GENERATE_STATUSES.GENERATED ||
+        !filing.generatedFile?.storedPath
+      ) {
+        skipped.push(filing.id);
+        errors.push({
+          clientCode,
+          message: 'Form 5 not generated',
+        });
+        continue;
+      }
 
-    const mediaUrl = String(filing.generatedFile.storedPath || '').trim();
-    if (!/^https?:\/\//i.test(mediaUrl)) {
-      skipped.push(filing.id);
-      errors.push({
-        clientCode,
-        message: 'No public S3 URL',
-      });
-      continue;
+      mediaUrl = String(filing.generatedFile.storedPath || '').trim();
+      if (!/^https?:\/\//i.test(mediaUrl)) {
+        skipped.push(filing.id);
+        errors.push({
+          clientCode,
+          message: 'No public S3 URL',
+        });
+        continue;
+      }
     }
 
     // Check phone
@@ -1389,7 +1433,11 @@ export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
       recipientName: rawRecipientName,
     });
 
-    const { bodyValues, missing } = resolveWhatsAppMessage(template, sourceData);
+    const { bodyValues, missing } = resolveWhatsAppMessage(
+      template,
+      sourceData,
+      customValues,
+    );
 
     if (missing.length > 0) {
       skipped.push(filing.id);
@@ -1401,7 +1449,9 @@ export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
     }
 
     // Valid entry
-    const filename = ensurePdfFilename(filing.generatedFile.filename);
+    const filename = needsDocument
+      ? ensurePdfFilename(filing.generatedFile.filename)
+      : null;
     validEntries.push({
       filing,
       phone,
@@ -1480,7 +1530,11 @@ export const bulkSendFilingsWhatsApp = async (ids, templateId, actorId) => {
   let failedCount = 0;
 
   for (const chunk of result.chunks || []) {
-    const chunkPhones = chunk.phones || [];
+    // sendWhatsAppTemplateBatch returns { entries, ok, response, error } per
+    // chunk — not a "phones" field — so this always came out empty and every
+    // bulk send silently skipped recording, reporting 0 sent / 0 failed no
+    // matter what MSG91 actually did.
+    const chunkPhones = (chunk.entries || []).flatMap((entry) => entry.to || []);
     const chunkOk = chunk.ok;
     const chunkError = chunk.error;
 

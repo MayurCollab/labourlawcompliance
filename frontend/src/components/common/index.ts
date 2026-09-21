@@ -29,3 +29,4 @@ export { PermissionGate } from './PermissionGate';
 export { PermissionRoute } from './PermissionRoute';
 export { ProtectedRoute } from './ProtectedRoute';
 export { GuestRoute } from './GuestRoute';
+export { WhatsAppPreviewText } from './WhatsAppPreviewText';

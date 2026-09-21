@@ -152,7 +152,7 @@ export const useSendFilingWhatsAppMutation = () => {
       payload,
     }: {
       id: string;
-      payload?: SendFilingWhatsAppPayload;
+      payload: SendFilingWhatsAppPayload;
     }) => filingsApi.sendWhatsApp(id, payload),
     onSuccess: (result) => {
       toastSuccess(`WhatsApp sent to ${result.phone}`);

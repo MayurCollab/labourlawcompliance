@@ -1,13 +1,78 @@
 import mongoose from 'mongoose';
 
 import auditPlugin from '../../database/plugins/auditPlugin.js';
-import { WHATSAPP_TEMPLATE_FIELD_KEYS } from './whatsappTemplates.constants.js';
+import {
+  CUSTOM_TOKEN_REGEX,
+  WHATSAPP_BODY_MODES,
+  WHATSAPP_BODY_MODE_VALUES,
+  WHATSAPP_TEMPLATE_FIELD_KEYS,
+  WHATSAPP_VARIABLE_TYPES,
+  WHATSAPP_VARIABLE_TYPE_VALUES,
+} from './whatsappTemplates.constants.js';
 
 /**
- * Local record of an already-approved MSG91 / WhatsApp template. It stores how
- * to call the template (name + namespace + language) and how our data maps into
- * its positional body variables. Array order of `variables` is body_1..body_N.
- * `bodyPreview` is reference text only and is never sent to MSG91.
+ * One positional body variable. `type` decides where its value comes from:
+ * a data field, or free text the operator types at send time.
+ *
+ * `type` defaults to 'field' so templates stored before custom text existed
+ * keep resolving exactly as they did — no migration needed.
+ */
+const whatsappTemplateVariableSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: WHATSAPP_VARIABLE_TYPE_VALUES,
+      default: WHATSAPP_VARIABLE_TYPES.FIELD,
+      required: true,
+    },
+    /** Data field to read — `field` variables only. */
+    field: {
+      type: String,
+      enum: WHATSAPP_TEMPLATE_FIELD_KEYS,
+    },
+    /** Admin-facing name for the input shown at send time — `custom` variables only. */
+    label: {
+      type: String,
+      trim: true,
+      maxlength: [60, 'Variable label cannot exceed 60 characters'],
+    },
+    /** Placeholder in the body, e.g. `{{CustomText1}}` — `custom` variables only. */
+    token: {
+      type: String,
+      trim: true,
+      maxlength: [60, 'Variable token cannot exceed 60 characters'],
+    },
+  },
+  { _id: false },
+);
+
+whatsappTemplateVariableSchema.pre('validate', function validateVariable(next) {
+  if (this.type === WHATSAPP_VARIABLE_TYPES.CUSTOM) {
+    this.field = undefined;
+    if (!this.label) {
+      return next(new Error('A custom variable needs a label'));
+    }
+    if (!CUSTOM_TOKEN_REGEX.test(this.token || '')) {
+      return next(new Error('A custom variable needs a {{Token}} placeholder'));
+    }
+    return next();
+  }
+
+  this.label = undefined;
+  this.token = undefined;
+  if (!this.field) {
+    return next(new Error('A field variable needs a field'));
+  }
+  return next();
+});
+
+/**
+ * Local record of an already-approved MSG91 / WhatsApp template. MSG91 is the
+ * WhatsApp service provider; templates are approved in their dashboard, never
+ * from here. This record only stores which approved template to call
+ * (name + namespace + language) and what goes into its positional body
+ * variables. Array order of `variables` is body_1..body_N and must match what
+ * the provider approved. `bodyPreview` is reference text only and is never sent.
  */
 const whatsappTemplateSchema = new mongoose.Schema({
   label: {
@@ -41,17 +106,18 @@ const whatsappTemplateSchema = new mongoose.Schema({
     maxlength: [1024, 'Body preview cannot exceed 1024 characters'],
   },
   variables: {
-    type: [
-      {
-        _id: false,
-        field: {
-          type: String,
-          enum: WHATSAPP_TEMPLATE_FIELD_KEYS,
-          required: true,
-        },
-      },
-    ],
+    type: [whatsappTemplateVariableSchema],
     default: [],
+  },
+  /**
+   * How `variables` map onto MSG91's body slots. Defaults to 'positional' so
+   * templates stored before 'single' existed (Template 1) keep resolving
+   * exactly as they did — see WHATSAPP_BODY_MODES.
+   */
+  bodyMode: {
+    type: String,
+    enum: WHATSAPP_BODY_MODE_VALUES,
+    default: WHATSAPP_BODY_MODES.POSITIONAL,
   },
   isActive: {
     type: Boolean,

@@ -3,6 +3,7 @@ import type {
   BulkGeneratePayload,
   BulkGenerateProgressEvent,
   BulkGenerateReport,
+  BulkSendFilingWhatsAppResult,
   Filing,
   FilingPtMismatch,
   ListFilingsParams,
@@ -242,7 +243,7 @@ export const filingsApi = {
 
   sendWhatsApp: async (
     id: string,
-    payload: SendFilingWhatsAppPayload = {},
+    payload: SendFilingWhatsAppPayload,
   ): Promise<SendFilingWhatsAppResult> => {
     const { data } = await axiosInstance.post<
       ApiSuccessResponse<SendFilingWhatsAppResult>
@@ -253,6 +254,7 @@ export const filingsApi = {
   bulkSendWhatsApp: async (payload: {
     ids: string[];
     templateId: string;
+    customValues?: Record<string, string>;
   }): Promise<BulkSendFilingWhatsAppResult> => {
     const { data } = await axiosInstance.post<
       ApiSuccessResponse<BulkSendFilingWhatsAppResult>

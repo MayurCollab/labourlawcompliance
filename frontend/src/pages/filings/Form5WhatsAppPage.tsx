@@ -7,10 +7,16 @@ import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { Modal } from '@/components/dialogs/Modal';
-import { FilterPanel, filterIds, locationOptionsFromClients, type FilterValues } from '@/components/forms/FilterPanel';
+import {
+  FilterPanel,
+  filterIds,
+  locationOptionsFromClients,
+  type FilterValues,
+} from '@/components/forms/FilterPanel';
 import { SearchBox } from '@/components/forms/SearchBox';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { Input } from '@/components/inputs/Input';
+import { Select } from '@/components/inputs/Select';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DataTable,
@@ -23,15 +29,19 @@ import {
 import { PERMISSIONS } from '@/constants/permissions';
 import { useClientOptionsQuery } from '@/hooks/useClients';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import {
-  filingsQueryKeys,
-  useFilingsQuery,
-  useSendFilingWhatsAppMutation,
-} from '@/hooks/useFilings';
+import { filingsQueryKeys, useFilingsQuery } from '@/hooks/useFilings';
 import { usePermission } from '@/hooks/usePermission';
+import { useWhatsAppTemplatesQuery } from '@/hooks/useWhatsAppTemplates';
+import { SendWhatsAppTemplateModal } from '@/pages/filings/SendWhatsAppTemplateModal';
+import {
+  hasAllCustomValues,
+  WhatsAppCustomValueFields,
+} from '@/pages/filings/WhatsAppCustomValueFields';
 import { PATHS } from '@/routes/paths';
 import { cn } from '@/lib/utils';
 import type { Filing, ListFilingsParams } from '@/types/filing.types';
+import type { WhatsAppCustomValues } from '@/types/whatsappTemplate.types';
+import { collectCustomVariables } from '@/utils/whatsappTemplatePreview';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { toastError, toastSuccess } from '@/utils/toast';
 
@@ -163,6 +173,12 @@ export function Form5WhatsAppPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sendingFilingId, setSendingFilingId] = useState<string | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
+  /** Row whose single-send modal is open (Flow A). */
+  const [sendModalFiling, setSendModalFiling] = useState<Filing | null>(null);
+  /** Template + custom text chosen for the bulk send (Flow B). */
+  const [bulkTemplateId, setBulkTemplateId] = useState('');
+  const [bulkCustomValues, setBulkCustomValues] =
+    useState<WhatsAppCustomValues>({});
   /** Bumps when drafts should remount inputs (after send / external sync). */
   const [contactSyncKey, setContactSyncKey] = useState(0);
 
@@ -177,9 +193,9 @@ export function Form5WhatsAppPage() {
   const recipientDraftsRef = useRef<Record<string, string>>({});
   const persistedPhoneRef = useRef<Record<string, string>>({});
   const persistedNameRef = useRef<Record<string, string>>({});
-  const persistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
-    {},
-  );
+  const persistTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
   const persistQueueRef = useRef<Record<string, Promise<void>>>({});
 
   const locationIds = filterIds(appliedFilters.locationIds);
@@ -205,7 +221,21 @@ export function Form5WhatsAppPage() {
   const clientsQuery = useClientOptionsQuery({
     enabled: hasPermission(PERMISSIONS.FILINGS_VIEW),
   });
-  const sendWhatsAppMutation = useSendFilingWhatsAppMutation();
+  const templatesQuery = useWhatsAppTemplatesQuery({
+    isActive: true,
+    sortBy: 'label',
+    sortOrder: 'asc',
+    limit: 100,
+  });
+
+  const templates = templatesQuery.data?.templates ?? [];
+  const bulkTemplate = templates.find((item) => item.id === bulkTemplateId);
+  const bulkCustomVariables = collectCustomVariables(bulkTemplate?.variables);
+
+  // Text typed for one template should not carry over to another.
+  useEffect(() => {
+    setBulkCustomValues({});
+  }, [bulkTemplateId]);
 
   const rows = filingsQuery.data?.filings ?? [];
 
@@ -242,7 +272,9 @@ export function Form5WhatsAppPage() {
     async (clientKey: string) => {
       if (!canEditClient) return;
       const phone = (phoneDraftsRef.current[clientKey] ?? '').trim();
-      const recipientName = (recipientDraftsRef.current[clientKey] ?? '').trim();
+      const recipientName = (
+        recipientDraftsRef.current[clientKey] ?? ''
+      ).trim();
       const savedPhone = (persistedPhoneRef.current[clientKey] ?? '').trim();
       const savedName = (persistedNameRef.current[clientKey] ?? '').trim();
       const payload: {
@@ -312,7 +344,9 @@ export function Form5WhatsAppPage() {
 
   useEffect(() => {
     return () => {
-      for (const [clientKey, timer] of Object.entries(persistTimersRef.current)) {
+      for (const [clientKey, timer] of Object.entries(
+        persistTimersRef.current,
+      )) {
         clearTimeout(timer);
         void persistClientContactsRef.current(clientKey);
       }
@@ -419,10 +453,23 @@ export function Form5WhatsAppPage() {
 
   useEffect(() => {
     setIncompleteOnly(false);
-  }, [page, pageSize, search, period, appliedFilters, sort.sortBy, sort.sortOrder]);
+  }, [
+    page,
+    pageSize,
+    search,
+    period,
+    appliedFilters,
+    sort.sortBy,
+    sort.sortOrder,
+  ]);
 
   const pageIds = displayRows.map((row) => row.id);
 
+  /**
+   * Opens the single-send modal, where the operator picks the template and
+   * fills in any text it leaves to the sender. Contact drafts are flushed
+   * first so the modal opens with what is actually stored on the client.
+   */
   const handleSend = async (row: Filing) => {
     if (!canSend) return;
     const contact = rowContactState(row);
@@ -430,31 +477,34 @@ export function Form5WhatsAppPage() {
       toastError('Add a recipient name and mobile number before sending.');
       return;
     }
-    if (contact.clientKey) {
-      commitPersist(contact.clientKey);
-      await persistQueueRef.current[contact.clientKey];
-    }
     setSendingFilingId(row.id);
     try {
-      await sendWhatsAppMutation.mutateAsync({
-        id: row.id,
-        payload: {
-          phone: contact.phone || undefined,
-          savePhone: Boolean(contact.phone && contact.clientKey),
-          recipientName: contact.recipientName || undefined,
-          saveRecipientName: Boolean(contact.recipientName && contact.clientKey),
-        },
-      });
       if (contact.clientKey) {
-        phoneDraftsRef.current[contact.clientKey] = contact.phone;
-        recipientDraftsRef.current[contact.clientKey] = contact.recipientName;
-        persistedPhoneRef.current[contact.clientKey] = contact.phone;
-        persistedNameRef.current[contact.clientKey] = contact.recipientName;
-        setContactSyncKey((key) => key + 1);
+        commitPersist(contact.clientKey);
+        await persistQueueRef.current[contact.clientKey];
       }
+      // `row` still carries whatever the last query response had — the modal
+      // must open with what was actually just typed/saved, not that stale
+      // client.contactNumber, or it can send to a half-entered number.
+      setSendModalFiling({
+        ...row,
+        client: row.client
+          ? {
+              ...row.client,
+              contactNumber: contact.phone,
+              recipientName: contact.recipientName,
+            }
+          : row.client,
+      });
     } finally {
       setSendingFilingId(null);
     }
+  };
+
+  /** After a single send lands, re-read contacts so drafts match the server. */
+  const handleSingleSent = () => {
+    void queryClient.invalidateQueries({ queryKey: ['clients'] });
+    setContactSyncKey((key) => key + 1);
   };
 
   const allPageSelected =
@@ -639,7 +689,7 @@ export function Form5WhatsAppPage() {
                 !row.generatedFile ||
                 sendingFilingId === row.id ||
                 bulkSending ||
-                sendWhatsAppMutation.isPending
+                Boolean(sendModalFiling)
               }
               loading={sendingFilingId === row.id}
               onClick={() => void handleSend(row)}
@@ -658,7 +708,7 @@ export function Form5WhatsAppPage() {
       contactSyncKey,
       sendingFilingId,
       bulkSending,
-      sendWhatsAppMutation.isPending,
+      sendModalFiling,
       getDraftPhone,
       getDraftRecipient,
       handlePhoneDraftChange,
@@ -670,6 +720,14 @@ export function Form5WhatsAppPage() {
 
   const handleBulkSend = async () => {
     if (!canSend || selectedRows.length === 0) return;
+    if (!bulkTemplateId) {
+      toastError('Choose a template before sending.');
+      return;
+    }
+    if (!hasAllCustomValues(bulkCustomVariables, bulkCustomValues)) {
+      toastError('Fill in the message text before sending.');
+      return;
+    }
     setBulkSending(true);
     let sent = 0;
     let failed = 0;
@@ -694,7 +752,8 @@ export function Form5WhatsAppPage() {
         try {
           await clientsApi.update(clientKey, item.payload);
           if (item.payload.contactNumber !== undefined) {
-            phoneDraftsRef.current[clientKey] = item.payload.contactNumber ?? '';
+            phoneDraftsRef.current[clientKey] =
+              item.payload.contactNumber ?? '';
             persistedPhoneRef.current[clientKey] =
               item.payload.contactNumber ?? '';
           }
@@ -724,12 +783,18 @@ export function Form5WhatsAppPage() {
 
         try {
           await filingsApi.sendWhatsApp(row.id, {
+            templateId: bulkTemplateId,
             phone: contact.phone || undefined,
             savePhone: Boolean(contact.phone && contact.clientKey),
             recipientName: contact.recipientName || undefined,
             saveRecipientName: Boolean(
               contact.recipientName && contact.clientKey,
             ),
+            // One set of custom text for the whole batch — every recipient in
+            // this send gets the same wording.
+            ...(bulkCustomVariables.length > 0
+              ? { customValues: bulkCustomValues }
+              : {}),
           });
           if (contact.clientKey) {
             phoneDraftsRef.current[contact.clientKey] = contact.phone;
@@ -937,7 +1002,7 @@ export function Form5WhatsAppPage() {
           }
         }}
         title="WhatsApp send preview"
-        description="Review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type."
+        description="Pick a template, review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type."
         className="max-w-5xl"
         closeOnOverlayClick={!bulkSending}
         footer={
@@ -953,7 +1018,12 @@ export function Form5WhatsAppPage() {
             <PermissionGate permission={PERMISSIONS.FILINGS_SEND}>
               <Button
                 type="button"
-                disabled={selectedRows.length === 0 || bulkSending}
+                disabled={
+                  selectedRows.length === 0 ||
+                  bulkSending ||
+                  !bulkTemplateId ||
+                  !hasAllCustomValues(bulkCustomVariables, bulkCustomValues)
+                }
                 loading={bulkSending}
                 onClick={() => void handleBulkSend()}
               >
@@ -968,80 +1038,119 @@ export function Form5WhatsAppPage() {
             No rows selected. Close this dialog and select filings first.
           </p>
         ) : (
-          <div className="max-h-[60vh] overflow-auto">
-            <table className="w-full min-w-[48rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="px-2 py-2 font-medium">Client</th>
-                  <th className="px-2 py-2 font-medium">Month</th>
-                  <th className="px-2 py-2 font-medium">Mobile number</th>
-                  <th className="px-2 py-2 font-medium">Recipient name</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedRows.map((row) => {
-                  const contact = rowContactState(row);
-                  const company =
-                    row.client?.companyName || row.clientCode || '—';
-                  return (
-                    <tr
-                      key={row.id}
-                      className="border-b border-border/70 align-middle"
-                    >
-                      <td className="px-2 py-2">
-                        <p className="font-medium">{company}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {row.clientCode}
-                        </p>
-                      </td>
-                      <td className="px-2 py-2">
-                        {row.periodLabel || row.period}
-                      </td>
-                      <td className="px-2 py-2">
-                        {contact.clientKey ? (
-                          <WhatsAppDraftField
-                            key={`${contact.clientKey}-preview-phone-${contactSyncKey}`}
-                            clientId={contact.clientKey}
-                            draftValue={getDraftPhone(
-                              contact.clientKey,
-                              contact.savedPhone,
-                            )}
-                            placeholder="10-digit mobile"
-                            kind="phone"
-                            disabled={!canEditClient || bulkSending}
-                            onDraftChange={handlePhoneDraftChange}
-                            onCommit={commitPersist}
-                          />
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-2 py-2">
-                        {contact.clientKey ? (
-                          <WhatsAppDraftField
-                            key={`${contact.clientKey}-preview-name-${contactSyncKey}`}
-                            clientId={contact.clientKey}
-                            draftValue={getDraftRecipient(
-                              contact.clientKey,
-                              contact.savedName,
-                            )}
-                            placeholder="Person who receives this"
-                            disabled={!canEditClient || bulkSending}
-                            onDraftChange={handleRecipientDraftChange}
-                            onCommit={commitPersist}
-                          />
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-4">
+            <Select
+              label="Template *"
+              value={bulkTemplateId}
+              onChange={(event) => setBulkTemplateId(event.target.value)}
+              placeholder="Select a template…"
+              options={templates.map((item) => ({
+                value: item.id,
+                label: item.label,
+              }))}
+              disabled={templatesQuery.isLoading || bulkSending}
+              error={bulkTemplateId ? undefined : 'Choose the template to send'}
+            />
+
+            <WhatsAppCustomValueFields
+              variables={bulkCustomVariables}
+              values={bulkCustomValues}
+              onChange={(token, value) =>
+                setBulkCustomValues((current) => ({
+                  ...current,
+                  [token]: value,
+                }))
+              }
+              disabled={bulkSending}
+              hint={`This text is sent to all ${selectedRows.length} selected recipient(s) — it is not customised per client.`}
+            />
+
+            <div className="max-h-[50vh] overflow-auto">
+              <table className="w-full min-w-[48rem] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-2 py-2 font-medium">Client</th>
+                    <th className="px-2 py-2 font-medium">Month</th>
+                    <th className="px-2 py-2 font-medium">Mobile number</th>
+                    <th className="px-2 py-2 font-medium">Recipient name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedRows.map((row) => {
+                    const contact = rowContactState(row);
+                    const company =
+                      row.client?.companyName || row.clientCode || '—';
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-border/70 align-middle"
+                      >
+                        <td className="px-2 py-2">
+                          <p className="font-medium">{company}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {row.clientCode}
+                          </p>
+                        </td>
+                        <td className="px-2 py-2">
+                          {row.periodLabel || row.period}
+                        </td>
+                        <td className="px-2 py-2">
+                          {contact.clientKey ? (
+                            <WhatsAppDraftField
+                              key={`${contact.clientKey}-preview-phone-${contactSyncKey}`}
+                              clientId={contact.clientKey}
+                              draftValue={getDraftPhone(
+                                contact.clientKey,
+                                contact.savedPhone,
+                              )}
+                              placeholder="10-digit mobile"
+                              kind="phone"
+                              disabled={!canEditClient || bulkSending}
+                              onDraftChange={handlePhoneDraftChange}
+                              onCommit={commitPersist}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-2 py-2">
+                          {contact.clientKey ? (
+                            <WhatsAppDraftField
+                              key={`${contact.clientKey}-preview-name-${contactSyncKey}`}
+                              clientId={contact.clientKey}
+                              draftValue={getDraftRecipient(
+                                contact.clientKey,
+                                contact.savedName,
+                              )}
+                              placeholder="Person who receives this"
+                              disabled={!canEditClient || bulkSending}
+                              onDraftChange={handleRecipientDraftChange}
+                              onCommit={commitPersist}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Modal>
+
+      {sendModalFiling && (
+        <SendWhatsAppTemplateModal
+          open
+          onOpenChange={(open) => {
+            if (!open) setSendModalFiling(null);
+          }}
+          filing={sendModalFiling}
+          onSent={handleSingleSent}
+        />
+      )}
     </div>
   );
 }

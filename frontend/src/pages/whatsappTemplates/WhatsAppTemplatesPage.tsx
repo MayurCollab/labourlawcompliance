@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { History, Plus } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
@@ -15,12 +16,14 @@ import {
   type DataTablePageSizeOption,
 } from '@/components/tables';
 import { PERMISSIONS } from '@/constants/permissions';
+import { PATHS } from '@/routes/paths';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   useDeleteWhatsAppTemplateMutation,
   useWhatsAppTemplatesQuery,
 } from '@/hooks/useWhatsAppTemplates';
-import { WhatsAppTemplateEditorDrawer } from '@/pages/whatsappTemplates/WhatsAppTemplateEditorDrawer';
+import { WhatsAppTemplateEditorModal } from '@/pages/whatsappTemplates/WhatsAppTemplateEditorModal';
+import { WhatsAppTemplateHistoryModal } from '@/pages/whatsappTemplates/WhatsAppTemplateHistoryModal';
 import type { WhatsAppTemplateListItem } from '@/types/whatsappTemplate.types';
 
 /**
@@ -38,6 +41,8 @@ export function WhatsAppTemplatesPage() {
   const [editingTemplate, setEditingTemplate] =
     useState<WhatsAppTemplateListItem | null>(null);
   const [pendingDelete, setPendingDelete] =
+    useState<WhatsAppTemplateListItem | null>(null);
+  const [historyTemplate, setHistoryTemplate] =
     useState<WhatsAppTemplateListItem | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -79,34 +84,43 @@ export function WhatsAppTemplatesPage() {
       {
         id: 'label',
         header: 'Template Name',
-        cell: (row) => (
-          <div className="flex flex-col gap-1">
-            <span className="font-medium">{row.label}</span>
-            {row.isSeeded && (
-              <Badge variant="secondary" className="w-fit text-xs">
-                Seeded
-              </Badge>
-            )}
-          </div>
-        ),
+        minWidth: 160,
+        cell: (row) => <span className="font-medium">{row.label}</span>,
       },
       {
-        id: 'msg91TemplateName',
-        header: 'MSG91 Template',
+        id: 'bodyPreview',
+        header: 'Message',
         cell: (row) => (
-          <span className="font-mono text-sm">{row.msg91TemplateName}</span>
+          <span className="line-clamp-1 text-sm text-muted-foreground">
+            {row.bodyPreview || '—'}
+          </span>
         ),
       },
       {
         id: 'variables',
         header: 'Variables',
-        cell: (row) => (
-          <Badge variant="outline">{row.variables.length} fields</Badge>
-        ),
+        width: 160,
+        minWidth: 160,
+        cell: (row) => {
+          const custom = row.variables.filter(
+            (variable) => variable.type === 'custom',
+          ).length;
+          return (
+            <div className="flex flex-wrap gap-1">
+              <Badge variant="outline">
+                {row.variables.length}{' '}
+                {row.variables.length === 1 ? 'variable' : 'variables'}
+              </Badge>
+              {custom > 0 && <Badge variant="secondary">{custom} custom</Badge>}
+            </div>
+          );
+        },
       },
       {
         id: 'isActive',
         header: 'Status',
+        width: 110,
+        minWidth: 110,
         cell: (row) =>
           row.isActive ? (
             <Badge variant="success">Active</Badge>
@@ -118,10 +132,21 @@ export function WhatsAppTemplatesPage() {
         id: 'actions',
         header: '',
         className: 'text-right',
-        width: 200,
-        minWidth: 200,
+        width: 280,
+        minWidth: 280,
         cell: (row) => (
           <div className="flex justify-end gap-2">
+            <PermissionGate permission={PERMISSIONS.WHATSAPP_TEMPLATES_VIEW}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setHistoryTemplate(row)}
+                leftIcon={<History className="size-3.5" />}
+              >
+                History
+              </Button>
+            </PermissionGate>
             <PermissionGate permission={PERMISSIONS.WHATSAPP_TEMPLATES_EDIT}>
               <Button
                 type="button"
@@ -129,7 +154,7 @@ export function WhatsAppTemplatesPage() {
                 size="sm"
                 onClick={() => handleEdit(row)}
               >
-                Edit
+                {row.isSeeded ? 'Preview' : 'Edit'}
               </Button>
             </PermissionGate>
             <PermissionGate permission={PERMISSIONS.WHATSAPP_TEMPLATES_DELETE}>
@@ -138,7 +163,6 @@ export function WhatsAppTemplatesPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setPendingDelete(row)}
-                disabled={row.isSeeded}
               >
                 Delete
               </Button>
@@ -154,14 +178,23 @@ export function WhatsAppTemplatesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="WhatsApp Templates"
-        description="Manage MSG91 WhatsApp message templates for Form 5 sends"
-      >
-        <PermissionGate permission={PERMISSIONS.WHATSAPP_TEMPLATES_CREATE}>
-          <Button type="button" onClick={handleCreate}>
-            New Template
-          </Button>
-        </PermissionGate>
-      </PageHeader>
+        description="Name a template and compose its message — pick from your data or add your own text."
+        breadcrumbs={[
+          { label: 'Home', href: PATHS.home },
+          { label: 'WhatsApp Templates' },
+        ]}
+        actions={
+          <PermissionGate permission={PERMISSIONS.WHATSAPP_TEMPLATES_CREATE}>
+            <Button
+              type="button"
+              leftIcon={<Plus className="size-4" />}
+              onClick={handleCreate}
+            >
+              New Template
+            </Button>
+          </PermissionGate>
+        }
+      />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <SearchBox
@@ -198,7 +231,7 @@ export function WhatsAppTemplatesPage() {
       />
 
       {editorOpen && (
-        <WhatsAppTemplateEditorDrawer
+        <WhatsAppTemplateEditorModal
           template={editingTemplate}
           onClose={handleEditorClose}
         />
@@ -209,14 +242,23 @@ export function WhatsAppTemplatesPage() {
         onOpenChange={(open) => !open && setPendingDelete(null)}
         onConfirm={handleDelete}
         title="Delete WhatsApp template?"
-        description={
+        message={
           pendingDelete
-            ? `This will permanently delete "${pendingDelete.label}". This action cannot be undone.`
+            ? pendingDelete.isSeeded
+              ? `Delete “${pendingDelete.label}”? This is the pre-configured template your existing Form 5 reminders use — deleting it stops those sends until you create a replacement. It's a soft delete (recoverable from the database), but there's no restore option in this screen.`
+              : `Delete “${pendingDelete.label}”? Any send flow still pointing at it will stop working. Messages already sent keep their own copy of the template.`
             : ''
         }
-        confirmText="Delete"
-        variant="danger"
+        confirmLabel="Delete"
+        danger
         loading={deleteMutation.isPending}
+      />
+
+      <WhatsAppTemplateHistoryModal
+        open={!!historyTemplate}
+        onOpenChange={(open) => !open && setHistoryTemplate(null)}
+        templateId={historyTemplate?.id ?? null}
+        templateLabel={historyTemplate?.label}
       />
     </div>
   );

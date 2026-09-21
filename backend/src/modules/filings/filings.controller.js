@@ -115,6 +115,7 @@ export const bulkSendFilingsWhatsApp = asyncHandler(async (req, res) => {
     req.body.ids,
     req.body.templateId,
     req.user.id,
+    req.body.customValues,
   );
   return sendSuccess(res, report, FILINGS_MESSAGES.BULK_WHATSAPP_SENT);
 });

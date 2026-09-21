@@ -179,6 +179,8 @@ export type SendFilingWhatsAppPayload = {
   savePhone?: boolean;
   recipientName?: string;
   saveRecipientName?: boolean;
+  /** Text typed for the template's custom variables, keyed by placeholder token. */
+  customValues?: Record<string, string>;
 };
 
 export type SendFilingWhatsAppResult = {

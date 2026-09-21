@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/buttons';
+import { WhatsAppPreviewText } from '@/components/common/WhatsAppPreviewText';
 import { Modal } from '@/components/dialogs/Modal';
 import { Checkbox } from '@/components/inputs/Checkbox';
 import { Input } from '@/components/inputs/Input';
@@ -10,26 +11,38 @@ import {
   useWhatsAppTemplateFieldsQuery,
 } from '@/hooks/useWhatsAppTemplates';
 import { useSendFilingWhatsAppMutation } from '@/hooks/useFilings';
+import {
+  hasAllCustomValues,
+  WhatsAppCustomValueFields,
+} from '@/pages/filings/WhatsAppCustomValueFields';
 import type { Filing } from '@/types/filing.types';
+import type { WhatsAppCustomValues } from '@/types/whatsappTemplate.types';
 import {
   buildWhatsAppSourceData,
+  collapseWhatsAppBodyLineBreaks,
+  collectCustomVariables,
   resolveWhatsAppPreview,
+  wrapWithGenericTemplate,
 } from '@/utils/whatsappTemplatePreview';
 
 type SendWhatsAppTemplateModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   filing: Filing;
+  /** Called after a successful send, so the page can refresh its contact drafts. */
+  onSent?: () => void;
 };
 
 /**
  * Modal for sending a single Form 5 on WhatsApp (Flow A).
- * User selects a template, reviews live preview, and confirms phone/recipient.
+ * User selects a template, fills in any text the template leaves to the sender,
+ * reviews the live preview, and confirms phone/recipient.
  */
 export function SendWhatsAppTemplateModal({
   open,
   onOpenChange,
   filing,
+  onSent,
 }: SendWhatsAppTemplateModalProps) {
   const [templateId, setTemplateId] = useState('');
   const [phone, setPhone] = useState(filing.client?.contactNumber ?? '');
@@ -38,6 +51,7 @@ export function SendWhatsAppTemplateModal({
     filing.client?.recipientName ?? '',
   );
   const [saveRecipientName, setSaveRecipientName] = useState(true);
+  const [customValues, setCustomValues] = useState<WhatsAppCustomValues>({});
 
   const templatesQuery = useWhatsAppTemplatesQuery({
     isActive: true,
@@ -52,19 +66,47 @@ export function SendWhatsAppTemplateModal({
   const templates = templatesQuery.data?.templates ?? [];
   const fields = fieldsQuery.data?.fields ?? [];
   const selectedTemplate = templates.find((t) => t.id === templateId);
+  const customVariables = collectCustomVariables(selectedTemplate?.variables);
 
   // Build source data for preview
   const sourceData = buildWhatsAppSourceData(filing, recipientName);
 
-  // Generate preview text
-  const previewText = selectedTemplate
-    ? resolveWhatsAppPreview(selectedTemplate.bodyPreview, fields, sourceData)
+  // Generate preview text. A 'single' mode template sends its whole message
+  // as one MSG91 variable, and MSG91 rejects line breaks inside it — collapse
+  // them here too so the preview shows exactly what gets delivered. MSG91
+  // also wraps that variable with its own fixed wording on its side (never
+  // something we send), so the preview adds it too — otherwise the operator
+  // would see an already-complete-looking message and be tempted to type
+  // "Hii"/"Thank you" into it themselves, doubling it up.
+  const rawPreviewText = selectedTemplate
+    ? resolveWhatsAppPreview(
+        selectedTemplate.bodyPreview,
+        fields,
+        sourceData,
+        customVariables,
+        customValues,
+      )
     : '';
+  const isSingleMode = selectedTemplate?.bodyMode === 'single';
+  const composedPreviewText = isSingleMode
+    ? collapseWhatsAppBodyLineBreaks(rawPreviewText)
+    : rawPreviewText;
+  const genericTemplate = fieldsQuery.data?.genericTemplate;
+  const previewText =
+    isSingleMode && genericTemplate && composedPreviewText
+      ? wrapWithGenericTemplate(composedPreviewText, genericTemplate)
+      : composedPreviewText;
 
   // Validation
   const phoneValid = phone.trim().length > 0;
   const recipientValid = recipientName.trim().length > 0;
-  const canSend = templateId && phoneValid && recipientValid;
+  const customValid = hasAllCustomValues(customVariables, customValues);
+  const canSend =
+    Boolean(templateId) && phoneValid && recipientValid && customValid;
+
+  const handleCustomChange = (token: string, value: string) => {
+    setCustomValues((current) => ({ ...current, [token]: value }));
+  };
 
   const handleSend = async () => {
     if (!canSend) return;
@@ -77,9 +119,11 @@ export function SendWhatsAppTemplateModal({
         savePhone,
         recipientName: recipientName.trim(),
         saveRecipientName,
+        ...(customVariables.length > 0 ? { customValues } : {}),
       },
     });
 
+    onSent?.();
     onOpenChange(false);
   };
 
@@ -91,8 +135,14 @@ export function SendWhatsAppTemplateModal({
       setRecipientName(filing.client?.recipientName ?? '');
       setSavePhone(true);
       setSaveRecipientName(true);
+      setCustomValues({});
     }
   }, [open, filing]);
+
+  // Text typed for one template should not leak into another.
+  useEffect(() => {
+    setCustomValues({});
+  }, [templateId]);
 
   return (
     <Modal
@@ -100,22 +150,17 @@ export function SendWhatsAppTemplateModal({
       onOpenChange={onOpenChange}
       title="Send Form 5 on WhatsApp"
       description={`${filing.clientCode} · ${filing.periodLabel || filing.period}`}
-      size="lg"
+      className="max-w-2xl"
     >
       <div className="flex flex-col gap-6">
         {/* Template Selection */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Template *</label>
           <Select
+            label="Template *"
             value={templateId}
-            onValueChange={setTemplateId}
-            options={[
-              { value: '', label: 'Select a template...', disabled: true },
-              ...templates.map((t) => ({
-                value: t.id,
-                label: t.label,
-              })),
-            ]}
+            onChange={(event) => setTemplateId(event.target.value)}
+            placeholder="Select a template…"
+            options={templates.map((t) => ({ value: t.id, label: t.label }))}
             disabled={templatesQuery.isLoading}
           />
           {!templateId && (
@@ -130,9 +175,17 @@ export function SendWhatsAppTemplateModal({
           )}
         </div>
 
-        {/* Contact Details */}
         {templateId && (
           <>
+            {/* Text this template leaves to the sender */}
+            <WhatsAppCustomValueFields
+              variables={customVariables}
+              values={customValues}
+              onChange={handleCustomChange}
+              disabled={sendMutation.isPending}
+            />
+
+            {/* Contact Details */}
             <div className="space-y-4">
               <div className="space-y-2">
                 <Input
@@ -140,11 +193,11 @@ export function SendWhatsAppTemplateModal({
                   onChange={(e) => setPhone(e.target.value)}
                   label="Mobile Number *"
                   placeholder="10-digit mobile"
-                  error={!phoneValid && phone.length > 0}
+                  error={phoneValid ? undefined : 'Enter a valid mobile number'}
                 />
                 <Checkbox
                   checked={savePhone}
-                  onCheckedChange={setSavePhone}
+                  onChange={(e) => setSavePhone(e.target.checked)}
                   label="Save this number to the client record"
                 />
               </div>
@@ -154,12 +207,12 @@ export function SendWhatsAppTemplateModal({
                   value={recipientName}
                   onChange={(e) => setRecipientName(e.target.value)}
                   label="Recipient Name *"
-                  placeholder="Mr. Sharma"
-                  error={!recipientValid && recipientName.length > 0}
+                  placeholder="Mr. Dipen Shah"
+                  error={recipientValid ? undefined : 'Enter a recipient name'}
                 />
                 <Checkbox
                   checked={saveRecipientName}
-                  onCheckedChange={setSaveRecipientName}
+                  onChange={(e) => setSaveRecipientName(e.target.checked)}
                   label="Save this name to the client record"
                 />
               </div>
@@ -170,7 +223,9 @@ export function SendWhatsAppTemplateModal({
               <label className="text-sm font-medium">Message Preview</label>
               <div className="rounded-md border bg-muted/30 p-4">
                 <div className="whitespace-pre-wrap break-words text-sm">
-                  {previewText || (
+                  {previewText ? (
+                    <WhatsAppPreviewText text={previewText} />
+                  ) : (
                     <span className="text-muted-foreground">
                       Preview will appear here...
                     </span>
@@ -181,14 +236,6 @@ export function SendWhatsAppTemplateModal({
                 This preview uses the actual data from this filing
               </p>
             </div>
-
-            {/* Validation Messages */}
-            {!canSend && (
-              <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
-                {!phoneValid && 'Please enter a valid mobile number. '}
-                {!recipientValid && 'Please enter a recipient name. '}
-              </div>
-            )}
           </>
         )}
 
@@ -203,7 +250,7 @@ export function SendWhatsAppTemplateModal({
           </Button>
           <Button
             type="button"
-            onClick={handleSend}
+            onClick={() => void handleSend()}
             disabled={!canSend}
             loading={sendMutation.isPending}
           >

@@ -4,8 +4,8 @@ import { WHATSAPP_TEMPLATES_MESSAGES } from './whatsappTemplates.constants.js';
 import * as whatsappTemplatesService from './whatsappTemplates.service.js';
 
 export const listTemplateFields = asyncHandler(async (_req, res) => {
-  const fields = whatsappTemplatesService.listTemplateFields();
-  return sendSuccess(res, { fields }, WHATSAPP_TEMPLATES_MESSAGES.FIELDS_FETCHED);
+  const result = whatsappTemplatesService.listTemplateFields();
+  return sendSuccess(res, result, WHATSAPP_TEMPLATES_MESSAGES.FIELDS_FETCHED);
 });
 
 export const listWhatsAppTemplates = asyncHandler(async (req, res) => {

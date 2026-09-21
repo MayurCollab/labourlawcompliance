@@ -3,7 +3,6 @@ import {
   FileSpreadsheet,
   History,
   LayoutDashboard,
-  LayoutTemplate,
   MessageCircle,
   MessageSquare,
   Scale,
@@ -78,12 +77,6 @@ export const APP_NAV_ITEMS: SidebarMenuItem[] = [
     label: 'WhatsApp templates',
     icon: MessageSquare,
     requiredPermission: PERMISSIONS.WHATSAPP_TEMPLATES_VIEW,
-  },
-  {
-    to: PATHS.templates,
-    label: 'Templates (legacy)',
-    icon: LayoutTemplate,
-    requiredPermission: PERMISSIONS.TEMPLATES_CREATE,
   },
   {
     to: PATHS.users,

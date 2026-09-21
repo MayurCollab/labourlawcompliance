@@ -86,9 +86,18 @@ export const listPtMismatchesQuerySchema = z
     }
   });
 
+/**
+ * Text the operator typed for the template's custom variables, keyed by
+ * placeholder token (or slot index). Empty for templates that only use data fields.
+ */
+const customValuesSchema = z
+  .record(z.string(), z.string().trim().max(1024))
+  .optional();
+
 export const bulkSendFilingWhatsAppSchema = z.object({
   ids: z.array(objectIdSchema).min(1, 'Select at least one filing').max(500),
   templateId: objectIdSchema,
+  customValues: customValuesSchema,
 });
 
 export const sendFilingWhatsAppSchema = z.object({
@@ -97,4 +106,5 @@ export const sendFilingWhatsAppSchema = z.object({
   savePhone: z.boolean().optional(),
   recipientName: z.string().trim().max(120).optional(),
   saveRecipientName: z.boolean().optional(),
+  customValues: customValuesSchema,
 });

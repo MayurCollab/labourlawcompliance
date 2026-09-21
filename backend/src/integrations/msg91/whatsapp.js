@@ -3,6 +3,20 @@ import AppError from '../../utils/AppError.js';
 import logger from '../../utils/logger.js';
 
 /**
+ * MSG91 rejects any body value containing a literal newline ("next line(\n)
+ * is not supported for body value"). A `bodyMode: 'single'` template's whole
+ * composed message becomes one such value, so a line break the operator
+ * typed while writing it — or one that happened to land inside a field's
+ * data — would otherwise fail the send outright. Collapse them to spaces
+ * instead of rejecting; multi-line intent still reads fine as one line.
+ */
+export const sanitizeWhatsAppBodyValue = (value) =>
+  String(value ?? '')
+    .replace(/\r\n|\r|\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
  * Wrap a template variable so WhatsApp renders it bold (*value*).
  * Empty values stay empty so MSG91 does not receive a lone "**".
  */
@@ -15,6 +29,13 @@ export const toWhatsAppBold = (value) => {
   return `*${text}*`;
 };
 
+/**
+ * Body values arrive already bolded where they should be — see
+ * resolveWhatsAppMessage, which applies `toWhatsAppBold` per substituted
+ * variable rather than to the whole value, so a `bodyMode: 'single'`
+ * template's literal (operator-typed) wording stays plain. This layer only
+ * sanitizes for MSG91's transport constraints (no newlines).
+ */
 const buildComponents = ({ filename, mediaUrl, bodyValues }) => {
   const components = {};
   if (mediaUrl) {
@@ -23,7 +44,7 @@ const buildComponents = ({ filename, mediaUrl, bodyValues }) => {
   bodyValues.forEach((value, index) => {
     components[`body_${index + 1}`] = {
       type: 'text',
-      value: toWhatsAppBold(value),
+      value: sanitizeWhatsAppBodyValue(value),
     };
   });
   return components;
@@ -59,11 +80,18 @@ const postBulkRequest = async (body) => {
   }
 
   if (!response.ok) {
-    const message =
+    // MSG91 doesn't always populate message/error/errors[0].message — fall
+    // back to whatever the response body actually contains (raw text, or the
+    // parsed object) rather than a bare status code with no way to diagnose it.
+    const detail =
       payload?.message ||
       payload?.error ||
       payload?.errors?.[0]?.message ||
-      `MSG91 WhatsApp send failed (${response.status})`;
+      payload?.raw ||
+      (payload ? JSON.stringify(payload).slice(0, 300) : null);
+    const message = detail
+      ? `MSG91 WhatsApp send failed (${response.status}): ${detail}`
+      : `MSG91 WhatsApp send failed (${response.status})`;
     logger.warn('[msg91] WhatsApp send rejected', {
       status: response.status,
       payload,
@@ -83,7 +111,7 @@ const postBulkRequest = async (body) => {
  * chunk fails only its own recipients.
  *
  * @param {{
- *   template: { name: string, namespace: string, languageCode: string },
+ *   template: { name: string, namespace: string, language: string },
  *   entries: Array<{
  *     to: string[],
  *     bodyValues: string[],
@@ -119,7 +147,7 @@ export const sendWhatsAppTemplateBatch = async ({ template, entries }) => {
         template: {
           name: template.name,
           language: {
-            code: template.languageCode,
+            code: template.language,
             policy: 'deterministic',
           },
           namespace: template.namespace,
