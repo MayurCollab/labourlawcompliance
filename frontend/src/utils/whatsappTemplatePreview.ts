@@ -40,26 +40,40 @@ const parsePeriod = (period: string | null | undefined) => {
   };
 };
 
+/** Recipient name is optional at send time — mirrors the backend's fallback. */
+const DEFAULT_WHATSAPP_RECIPIENT_NAME = 'Dear';
+
 /**
  * Build source data from a filing row for template resolution.
  * Mirrors backend buildWhatsAppSourceData function.
+ *
+ * `signatoryNameOverride` should already be resolved through the same
+ * override -> client -> org-default chain the Form 5 PDF itself uses (see
+ * resolveSignatoryName in the backend's filings.service.js) — otherwise this
+ * preview shows blank for any client that relies on the org-wide default,
+ * even though the PDF being sent prints that default correctly.
  */
 export const buildWhatsAppSourceData = (
   filing: Filing,
   recipientNameOverride?: string,
+  signatoryNameOverride?: string,
 ): WhatsAppSourceData => {
   const { monthName, year } = parsePeriod(filing.period);
 
+  const recipientName = String(
+    recipientNameOverride ?? filing.client?.recipientName ?? '',
+  ).trim();
+
   return {
-    recipientName: String(
-      recipientNameOverride ?? filing.client?.recipientName ?? '',
-    ).trim(),
+    recipientName: recipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
     companyName: String(filing.client?.companyName ?? '').trim(),
     clientCode: String(filing.clientCode ?? '').trim(),
     month: monthName,
     year,
     periodLabel: String(filing.periodLabel ?? '').trim(),
-    signatoryName: String(filing.client?.signatoryName ?? '').trim(),
+    signatoryName: String(
+      signatoryNameOverride ?? filing.client?.signatoryName ?? '',
+    ).trim(),
   };
 };
 
@@ -140,11 +154,22 @@ export const resolveWhatsAppPreview = (
  * here so the preview doesn't let an operator duplicate it by typing
  * "Hii"/"Thank you" themselves. Meaningless for 'positional' templates,
  * which have no separate wrapper concept.
+ *
+ * MSG91's approved wrapper is literally "Hii {1},\n\nThank you" — its suffix
+ * already starts with a comma. If the operator's own body also ends in one
+ * (e.g. "...as requested,"), the recipient sees it doubled: "...requested,,".
+ * Trim one trailing comma so the preview matches what's actually sent — see
+ * the matching trim on the backend (whatsappTemplates.resolve.js).
  */
 export const wrapWithGenericTemplate = (
   body: string,
   wrapper: WhatsAppGenericTemplateWrapper,
-): string => `${wrapper.prefix} ${body}${wrapper.suffix}`;
+): string => {
+  const trimmedBody = /^\s*,/.test(wrapper.suffix)
+    ? body.replace(/,\s*$/, '')
+    : body;
+  return `${wrapper.prefix} ${trimmedBody}${wrapper.suffix}`;
+};
 
 export type WhatsAppPreviewSegment = { text: string; bold: boolean };
 

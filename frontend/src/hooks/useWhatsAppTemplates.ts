@@ -20,11 +20,17 @@ export const whatsappTemplatesQueryKeys = {
 /**
  * Query to list WhatsApp templates with pagination and filters
  */
-export const useWhatsAppTemplatesQuery = (params: ListWhatsAppTemplatesParams) =>
+export const useWhatsAppTemplatesQuery = (
+  params: ListWhatsAppTemplatesParams,
+  options?: { refetchOnMount?: boolean | 'always' },
+) =>
   useQuery({
     queryKey: whatsappTemplatesQueryKeys.list(params),
     queryFn: () => whatsappTemplatesApi.list(params),
     staleTime: 15_000,
+    ...(options?.refetchOnMount !== undefined
+      ? { refetchOnMount: options.refetchOnMount }
+      : {}),
   });
 
 /**

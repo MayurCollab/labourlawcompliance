@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+  buildWhatsAppSourceData,
   listCustomVariables,
   missingCustomValues,
   missingFieldsMessage,
@@ -181,6 +182,63 @@ describe('resolveWhatsAppMessage', () => {
     const { missing } = resolveWhatsAppMessage(singleModeTemplate, sourceData, {});
 
     expect(missing).toEqual(['Month']);
+  });
+
+  test('bodyMode "single" trims a trailing comma so MSG91\'s own ",\\n\\nThank you" wrapper does not double it up', () => {
+    // MSG91's approved generic template is literally "Hii {1},\n\nThank you" —
+    // if the composed body also ends in a comma, the recipient would see
+    // "...Signatory,,". This is the exact bug reported.
+    const template = {
+      ...singleModeTemplate,
+      bodyPreview:
+        'Please fill it as soon as possible {{CustomText1}},',
+      variables: [
+        { type: 'custom', label: 'Signatory', token: '{{CustomText1}}' },
+      ],
+    };
+
+    const { bodyValues } = resolveWhatsAppMessage(template, sourceData, {
+      '{{CustomText1}}': 'Authorized Signatory',
+    });
+
+    expect(bodyValues).toEqual([
+      'Please fill it as soon as possible *Authorized Signatory*',
+    ]);
+  });
+});
+
+describe('buildWhatsAppSourceData', () => {
+  test('uses the client\'s own signatoryName when set', () => {
+    const data = buildWhatsAppSourceData({
+      client: { signatoryName: 'Client Own Signatory' },
+      signatoryName: 'Client Own Signatory',
+    });
+
+    expect(data.signatoryName).toBe('Client Own Signatory');
+  });
+
+  test('falls back to the resolved override (org default) when the client has none', () => {
+    // Callers resolve signatoryName through override -> client -> org-default
+    // themselves (see resolveSignatoryName in filings.service.js) and pass
+    // the result in here — this was the bug: the client had no signatoryName
+    // of its own, and this function used to ignore that resolved fallback,
+    // sending WhatsApp with a blank {{SignatoryName}} while the PDF, which
+    // does apply that fallback, printed the org default correctly.
+    const data = buildWhatsAppSourceData({
+      client: { signatoryName: null },
+      signatoryName: 'Org Default Signatory',
+    });
+
+    expect(data.signatoryName).toBe('Org Default Signatory');
+  });
+
+  test('is blank only when neither the client nor any fallback has a signatory', () => {
+    const data = buildWhatsAppSourceData({
+      client: { signatoryName: null },
+      signatoryName: '',
+    });
+
+    expect(data.signatoryName).toBe('');
   });
 });
 

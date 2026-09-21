@@ -1131,6 +1131,23 @@ const clientRefId = (client) => {
 const templateAttachesDocument = (template) =>
   template.bodyMode !== WHATSAPP_BODY_MODES.SINGLE;
 
+/** Recipient name is optional at send time — greet generically when none is set. */
+const DEFAULT_WHATSAPP_RECIPIENT_NAME = 'Dear';
+
+/**
+ * Same override → client → org-default fallback the Form 5 PDF itself uses
+ * (see buildForm5Values in form5Values.js) — without it, WhatsApp showed a
+ * blank {{SignatoryName}} for any client that leaves its own signatoryName
+ * unset and relies on the org-wide default, even though the PDF being sent
+ * prints that default correctly.
+ */
+const resolveSignatoryName = (filing, settings) =>
+  (filing.generateOverrides?.signatoryName &&
+    String(filing.generateOverrides.signatoryName).trim()) ||
+  (filing.client?.signatoryName && String(filing.client.signatoryName).trim()) ||
+  (settings?.signatoryName && String(settings.signatoryName).trim()) ||
+  '';
+
 /**
  * Send the latest generated Form 5 PDF on WhatsApp via MSG91.
  * Uses the public S3 object URL stored on generatedFile.storedPath.
@@ -1197,13 +1214,18 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       ? String(body.recipientName).trim()
       : String(filing.client?.recipientName ?? '').trim();
 
-  // Build source data for template resolution
+  const settings = await settingsService.getSettings();
+
+  // Build source data for template resolution — recipient name is optional,
+  // so fall back to a generic greeting rather than sending an empty value.
+  // Signatory name falls back the same way the Form 5 PDF itself does.
   const sourceData = buildWhatsAppSourceData({
     client: filing.client,
     clientCode: filing.clientCode,
     period: filing.period,
     periodLabel: filing.periodLabel,
-    recipientName: rawRecipientName,
+    recipientName: rawRecipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
+    signatoryName: resolveSignatoryName(filing, settings),
   });
 
   // Resolve template with source data + any text typed for custom variables
@@ -1338,6 +1360,9 @@ export const bulkSendFilingsWhatsApp = async (
   const template = await whatsappTemplatesService.getActiveTemplateOrFail(templateId);
   const templateSnapshot = toTemplateSnapshot(template);
   const needsDocument = templateAttachesDocument(template);
+  // Loaded once for the whole batch — signatory name falls back to this
+  // org-wide default the same way the Form 5 PDF itself does.
+  const settings = await settingsService.getSettings();
 
   // Custom text is chosen once for the whole batch, so a missing value is a
   // problem with the send itself — fail up front instead of skipping every row.
@@ -1413,16 +1438,8 @@ export const bulkSendFilingsWhatsApp = async (
       continue;
     }
 
-    // Check recipient name
+    // Recipient name is optional — greet generically when none is set.
     const rawRecipientName = String(filing.client?.recipientName ?? '').trim();
-    if (!rawRecipientName) {
-      skipped.push(filing.id);
-      errors.push({
-        clientCode,
-        message: 'Missing recipient name',
-      });
-      continue;
-    }
 
     // Build source data and resolve template
     const sourceData = buildWhatsAppSourceData({
@@ -1430,7 +1447,8 @@ export const bulkSendFilingsWhatsApp = async (
       clientCode: filing.clientCode,
       period: filing.period,
       periodLabel: filing.periodLabel,
-      recipientName: rawRecipientName,
+      recipientName: rawRecipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
+      signatoryName: resolveSignatoryName(filing, settings),
     });
 
     const { bodyValues, missing } = resolveWhatsAppMessage(

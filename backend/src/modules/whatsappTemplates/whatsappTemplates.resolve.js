@@ -1,3 +1,4 @@
+import config from '../../config/index.js';
 import { periodMonthAndYear } from '../../utils/period.js';
 import { toWhatsAppBold } from '../../integrations/msg91/whatsapp.js';
 import {
@@ -8,12 +9,30 @@ import {
 
 const text = (value) => String(value ?? '').trim();
 
+/**
+ * MSG91's generic approved template is literally "Hii {1},\n\nThank you" —
+ * the comma is baked into their side, not ours (see config.msg91.genericTemplate).
+ * If a 'single' mode body also ends in a comma (an operator writing "...as
+ * requested," as their own closing punctuation), the recipient sees it
+ * doubled: "...requested,,". Trim one trailing comma so it never repeats
+ * punctuation MSG91's own wrapper is about to add.
+ */
+const trimTrailingCommaForGenericWrap = (value) => {
+  const suffix = config.msg91.genericTemplate.suffix || '';
+  if (!/^\s*,/.test(suffix)) return value;
+  return value.replace(/,\s*$/, '');
+};
+
 const isCustom = (variable) => variable?.type === WHATSAPP_VARIABLE_TYPES.CUSTOM;
 
 /**
  * Map a client + filing period to the values a template variable can pull from.
  * `recipientName` overrides the client's stored name (the send flows let the
- * user type a name that is not yet saved).
+ * user type a name that is not yet saved). `signatoryName` overrides the
+ * client's stored name too — callers resolve it through the same
+ * override → client → org-default settings chain the Form 5 PDF itself uses
+ * (see filings.service.js resolveSignatoryName), so WhatsApp never shows
+ * blank where the PDF would print a name.
  */
 export const buildWhatsAppSourceData = ({
   client,
@@ -21,6 +40,7 @@ export const buildWhatsAppSourceData = ({
   period,
   periodLabel,
   recipientName,
+  signatoryName,
 }) => {
   const { monthName, year } = periodMonthAndYear(period);
   return {
@@ -30,7 +50,7 @@ export const buildWhatsAppSourceData = ({
     month: monthName,
     year,
     periodLabel: text(periodLabel),
-    signatoryName: text(client?.signatoryName),
+    signatoryName: text(signatoryName ?? client?.signatoryName),
   };
 };
 
@@ -116,7 +136,7 @@ export const resolveWhatsAppMessage = (template, sourceData, customValues = {}) 
 
   const bodyValues =
     template.bodyMode === WHATSAPP_BODY_MODES.SINGLE
-      ? [previewText]
+      ? [trimTrailingCommaForGenericWrap(previewText)]
       : (template.variables || []).map((variable, index) =>
           toWhatsAppBold(
             isCustom(variable)

@@ -11,6 +11,7 @@ import {
   useWhatsAppTemplateFieldsQuery,
 } from '@/hooks/useWhatsAppTemplates';
 import { useSendFilingWhatsAppMutation } from '@/hooks/useFilings';
+import { useSettingsQuery } from '@/hooks/useMasters';
 import {
   hasAllCustomValues,
   WhatsAppCustomValueFields,
@@ -53,14 +54,20 @@ export function SendWhatsAppTemplateModal({
   const [saveRecipientName, setSaveRecipientName] = useState(true);
   const [customValues, setCustomValues] = useState<WhatsAppCustomValues>({});
 
-  const templatesQuery = useWhatsAppTemplatesQuery({
-    isActive: true,
-    sortBy: 'label',
-    sortOrder: 'asc',
-    limit: 100,
-  });
+  // Always refetch on open — a template edited elsewhere must never show as
+  // a stale cached preview here, since what's shown is what gets sent.
+  const templatesQuery = useWhatsAppTemplatesQuery(
+    {
+      isActive: true,
+      sortBy: 'label',
+      sortOrder: 'asc',
+      limit: 100,
+    },
+    { refetchOnMount: 'always' },
+  );
 
   const fieldsQuery = useWhatsAppTemplateFieldsQuery();
+  const settingsQuery = useSettingsQuery({ enabled: open });
   const sendMutation = useSendFilingWhatsAppMutation();
 
   const templates = templatesQuery.data?.templates ?? [];
@@ -68,8 +75,21 @@ export function SendWhatsAppTemplateModal({
   const selectedTemplate = templates.find((t) => t.id === templateId);
   const customVariables = collectCustomVariables(selectedTemplate?.variables);
 
+  // Same override -> client -> org-default chain the Form 5 PDF itself uses
+  // — otherwise the preview shows blank for a client relying on the org-wide
+  // default signatory, even though the PDF being sent prints it correctly.
+  const resolvedSignatoryName =
+    filing.generateOverrides?.signatoryName ||
+    filing.client?.signatoryName ||
+    settingsQuery.data?.signatoryName ||
+    '';
+
   // Build source data for preview
-  const sourceData = buildWhatsAppSourceData(filing, recipientName);
+  const sourceData = buildWhatsAppSourceData(
+    filing,
+    recipientName,
+    resolvedSignatoryName,
+  );
 
   // Generate preview text. A 'single' mode template sends its whole message
   // as one MSG91 variable, and MSG91 rejects line breaks inside it — collapse
@@ -97,12 +117,11 @@ export function SendWhatsAppTemplateModal({
       ? wrapWithGenericTemplate(composedPreviewText, genericTemplate)
       : composedPreviewText;
 
-  // Validation
+  // Validation — recipient name is optional; it falls back to a generic
+  // "Dear" greeting server-side when left blank.
   const phoneValid = phone.trim().length > 0;
-  const recipientValid = recipientName.trim().length > 0;
   const customValid = hasAllCustomValues(customVariables, customValues);
-  const canSend =
-    Boolean(templateId) && phoneValid && recipientValid && customValid;
+  const canSend = Boolean(templateId) && phoneValid && customValid;
 
   const handleCustomChange = (token: string, value: string) => {
     setCustomValues((current) => ({ ...current, [token]: value }));
@@ -206,10 +225,12 @@ export function SendWhatsAppTemplateModal({
                 <Input
                   value={recipientName}
                   onChange={(e) => setRecipientName(e.target.value)}
-                  label="Recipient Name *"
+                  label="Recipient Name"
                   placeholder="Mr. Dipen Shah"
-                  error={recipientValid ? undefined : 'Enter a recipient name'}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Optional — greets as &quot;Dear&quot; when left blank.
+                </p>
                 <Checkbox
                   checked={saveRecipientName}
                   onChange={(e) => setSaveRecipientName(e.target.checked)}

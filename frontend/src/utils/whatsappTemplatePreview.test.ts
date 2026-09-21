@@ -76,6 +76,26 @@ describe('wrapWithGenericTemplate', () => {
 
     expect(wrapped).toBe('Hii *Mr. Dipen Shah*, reminder.,\n\nThank you');
   });
+
+  it('trims a trailing comma from the body so it does not double up with the suffix', () => {
+    const wrapped = wrapWithGenericTemplate(
+      'Please fill it as soon as possible *Authorized Signatory*,',
+      { prefix: 'Hii', suffix: ',\n\nThank you' },
+    );
+
+    expect(wrapped).toBe(
+      'Hii Please fill it as soon as possible *Authorized Signatory*,\n\nThank you',
+    );
+  });
+
+  it('leaves the body untouched when the suffix does not start with a comma', () => {
+    const wrapped = wrapWithGenericTemplate('Reminder text,', {
+      prefix: 'Hii',
+      suffix: '\n\nThank you',
+    });
+
+    expect(wrapped).toBe('Hii Reminder text,\n\nThank you');
+  });
 });
 
 describe('splitWhatsAppBoldSegments', () => {

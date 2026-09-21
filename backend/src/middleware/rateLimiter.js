@@ -41,7 +41,10 @@ export const authLimiter = rateLimit({
  */
 export const userWriteLimiter = rateLimit({
   windowMs: Number(process.env.USER_WRITE_RATE_WINDOW) || 15 * 60 * 1000,
-  max: Number(process.env.USER_WRITE_RATE_MAX) || 60,
+  // Auto-save (e.g. Form 5 WhatsApp contact edits, one write per field blur)
+  // can rack up dozens of writes in a normal editing session, so this needs
+  // real headroom above raw abuse-prevention minimums.
+  max: Number(process.env.USER_WRITE_RATE_MAX) || 300,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) =>

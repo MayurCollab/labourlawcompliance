@@ -64,6 +64,15 @@ const formatDate = (value: string | null | undefined) => {
   return date.toLocaleDateString('en-IN');
 };
 
+/** Outcome of one filing's WhatsApp send attempt, tracked for the post-send results list. */
+type BulkRowStatus = 'sent' | 'failed' | 'skipped';
+type BulkResultEntry = {
+  filingId: string;
+  row: Filing;
+  status: BulkRowStatus;
+  message: string;
+};
+
 /** Matches MSG91 WhatsApp phone rules: 10-digit mobile, optional 91 / leading zeros. */
 const isValidWhatsAppMobile = (input: string) => {
   let digits = String(input ?? '').replace(/\D/g, '');
@@ -89,7 +98,10 @@ type WhatsAppDraftFieldProps = {
 
 /**
  * Compact local-state input so grid remounts do not steal focus after each character.
- * Empty fields, and invalid mobile numbers, are highlighted. Values persist on pause / blur.
+ * Empty fields, and invalid mobile numbers, are highlighted so they're easy to
+ * spot and fill in — even recipient name, which is optional and defaults to
+ * "Dear" server-side, stays highlighted purely as a visual cue, never a block.
+ * Values persist on blur / Enter.
  */
 function WhatsAppDraftField({
   clientId,
@@ -173,6 +185,13 @@ export function Form5WhatsAppPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sendingFilingId, setSendingFilingId] = useState<string | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
+  /** Failed/skipped rows from the last bulk send, shown so they can be fixed and resent.
+   *  Null while composing a send; an array (possibly empty) once a batch has completed. */
+  const [bulkResults, setBulkResults] = useState<BulkResultEntry[] | null>(
+    null,
+  );
+  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
+  const [resendingAll, setResendingAll] = useState(false);
   /** Row whose single-send modal is open (Flow A). */
   const [sendModalFiling, setSendModalFiling] = useState<Filing | null>(null);
   /** Template + custom text chosen for the bulk send (Flow B). */
@@ -193,9 +212,6 @@ export function Form5WhatsAppPage() {
   const recipientDraftsRef = useRef<Record<string, string>>({});
   const persistedPhoneRef = useRef<Record<string, string>>({});
   const persistedNameRef = useRef<Record<string, string>>({});
-  const persistTimersRef = useRef<
-    Record<string, ReturnType<typeof setTimeout>>
-  >({});
   const persistQueueRef = useRef<Record<string, Promise<void>>>({});
 
   const locationIds = filterIds(appliedFilters.locationIds);
@@ -231,6 +247,16 @@ export function Form5WhatsAppPage() {
   const templates = templatesQuery.data?.templates ?? [];
   const bulkTemplate = templates.find((item) => item.id === bulkTemplateId);
   const bulkCustomVariables = collectCustomVariables(bulkTemplate?.variables);
+
+  // This query stays mounted for the page's whole lifetime, so it won't
+  // naturally refetch just because the preview modal opens later — force one
+  // so a template edited elsewhere never shows here as a stale cached body.
+  useEffect(() => {
+    if (previewOpen) {
+      void templatesQuery.refetch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewOpen]);
 
   // Text typed for one template should not carry over to another.
   useEffect(() => {
@@ -317,56 +343,44 @@ export function Form5WhatsAppPage() {
     return next;
   }, []);
 
-  const schedulePersist = useCallback(
-    (clientKey: string) => {
-      if (!canEditClient) return;
-      const timers = persistTimersRef.current;
-      if (timers[clientKey]) clearTimeout(timers[clientKey]);
-      timers[clientKey] = setTimeout(() => {
-        delete persistTimersRef.current[clientKey];
-        void queuePersist(clientKey);
-      }, 500);
-    },
-    [canEditClient, queuePersist],
-  );
-
+  /**
+   * Saves only fire on blur/Enter (see WhatsAppDraftField), never while the
+   * field still has focus. An earlier debounced "save as you pause typing"
+   * design could fire mid-number — e.g. after the area code, before the rest
+   * — sending a half-typed value as its own write. Committing only the
+   * final value keeps what's saved always complete, and halves write volume.
+   */
   const commitPersist = useCallback(
     (clientKey: string) => {
       if (!canEditClient) return;
-      if (persistTimersRef.current[clientKey]) {
-        clearTimeout(persistTimersRef.current[clientKey]);
-        delete persistTimersRef.current[clientKey];
-      }
       void queuePersist(clientKey);
     },
     [canEditClient, queuePersist],
   );
 
+  // Flush anything still unsaved (e.g. focus lost by unmounting rather than
+  // a blur event) so navigating away never silently drops an edit.
   useEffect(() => {
     return () => {
-      for (const [clientKey, timer] of Object.entries(
-        persistTimersRef.current,
-      )) {
-        clearTimeout(timer);
+      const dirtyKeys = new Set([
+        ...Object.keys(phoneDraftsRef.current),
+        ...Object.keys(recipientDraftsRef.current),
+      ]);
+      for (const clientKey of dirtyKeys) {
         void persistClientContactsRef.current(clientKey);
       }
     };
   }, []);
 
-  const handlePhoneDraftChange = useCallback(
-    (clientKey: string, value: string) => {
-      phoneDraftsRef.current[clientKey] = value;
-      schedulePersist(clientKey);
-    },
-    [schedulePersist],
-  );
+  const handlePhoneDraftChange = useCallback((clientKey: string, value: string) => {
+    phoneDraftsRef.current[clientKey] = value;
+  }, []);
 
   const handleRecipientDraftChange = useCallback(
     (clientKey: string, value: string) => {
       recipientDraftsRef.current[clientKey] = value;
-      schedulePersist(clientKey);
     },
-    [schedulePersist],
+    [],
   );
 
   const collectDirtyContacts = useCallback(
@@ -431,8 +445,10 @@ export function Form5WhatsAppPage() {
         phone,
         recipientName,
         missingPhone: !phone,
+        // Recipient name is optional — the send falls back to "Dear" — so it
+        // never blocks sending, only the mobile number does.
         missingRecipient: !recipientName,
-        incomplete: !phone || !recipientName,
+        incomplete: !phone,
       };
     },
     [getDraftPhone, getDraftRecipient],
@@ -473,8 +489,11 @@ export function Form5WhatsAppPage() {
   const handleSend = async (row: Filing) => {
     if (!canSend) return;
     const contact = rowContactState(row);
-    if (contact.incomplete) {
-      toastError('Add a recipient name and mobile number before sending.');
+    if (
+      contact.incomplete ||
+      (contact.phone.length > 0 && !isValidWhatsAppMobile(contact.phone))
+    ) {
+      toastError('Add a valid mobile number before sending.');
       return;
     }
     setSendingFilingId(row.id);
@@ -652,7 +671,7 @@ export function Form5WhatsAppPage() {
       },
       {
         id: 'recipientName',
-        header: 'Recipient name',
+        header: 'Recipient name (optional)',
         width: 148,
         minWidth: 136,
         cell: (row) => {
@@ -666,7 +685,7 @@ export function Form5WhatsAppPage() {
                 contact.clientKey,
                 contact.savedName,
               )}
-              placeholder="Person who receives this"
+              placeholder='Defaults to "Dear"'
               disabled={!canEditClient}
               onDraftChange={handleRecipientDraftChange}
               onCommit={commitPersist}
@@ -718,6 +737,67 @@ export function Form5WhatsAppPage() {
     ],
   );
 
+  /**
+   * Send (or resend) WhatsApp for one filing, using whatever phone/recipient
+   * drafts are currently held for its client. Mobile number is required — a
+   * missing or invalid one is skipped without calling the API; recipient
+   * name is optional and the server falls back to "Dear".
+   */
+  const sendOneFilingWhatsApp = useCallback(
+    async (row: Filing): Promise<BulkResultEntry> => {
+      const contact = rowContactState(row);
+      if (!contact.phone) {
+        return {
+          filingId: row.id,
+          row,
+          status: 'skipped',
+          message: 'Missing mobile number',
+        };
+      }
+      if (!isValidWhatsAppMobile(contact.phone)) {
+        return {
+          filingId: row.id,
+          row,
+          status: 'skipped',
+          message: 'Invalid mobile number',
+        };
+      }
+
+      try {
+        await filingsApi.sendWhatsApp(row.id, {
+          templateId: bulkTemplateId,
+          phone: contact.phone,
+          savePhone: Boolean(contact.clientKey),
+          recipientName: contact.recipientName || undefined,
+          saveRecipientName: Boolean(
+            contact.recipientName && contact.clientKey,
+          ),
+          // One set of custom text for the whole batch — every recipient in
+          // this send gets the same wording.
+          ...(bulkCustomVariables.length > 0
+            ? { customValues: bulkCustomValues }
+            : {}),
+        });
+        if (contact.clientKey) {
+          phoneDraftsRef.current[contact.clientKey] = contact.phone;
+          recipientDraftsRef.current[contact.clientKey] =
+            contact.recipientName;
+          persistedPhoneRef.current[contact.clientKey] = contact.phone;
+          persistedNameRef.current[contact.clientKey] = contact.recipientName;
+        }
+        return { filingId: row.id, row, status: 'sent', message: '' };
+      } catch (error) {
+        return {
+          filingId: row.id,
+          row,
+          status: 'failed',
+          message: getApiErrorMessage(error, 'Send failed'),
+        };
+      }
+    },
+    [rowContactState, bulkTemplateId, bulkCustomVariables, bulkCustomValues],
+  );
+
   const handleBulkSend = async () => {
     if (!canSend || selectedRows.length === 0) return;
     if (!bulkTemplateId) {
@@ -729,9 +809,6 @@ export function Form5WhatsAppPage() {
       return;
     }
     setBulkSending(true);
-    let sent = 0;
-    let failed = 0;
-    const errors: string[] = [];
 
     try {
       const pendingClients = new Set<string>();
@@ -748,6 +825,7 @@ export function Form5WhatsAppPage() {
 
       // Persist any remaining dirty drafts, then send each selected filing.
       const dirty = collectDirtyContacts(selectedRows);
+      const saveErrors: string[] = [];
       for (const [clientKey, item] of dirty) {
         try {
           await clientsApi.update(clientKey, item.payload);
@@ -764,52 +842,15 @@ export function Form5WhatsAppPage() {
               item.payload.recipientName ?? '';
           }
         } catch (error) {
-          failed += 1;
-          errors.push(
+          saveErrors.push(
             `${item.clientCode}: ${getApiErrorMessage(error, 'Save failed')}`,
           );
         }
       }
 
+      const results: BulkResultEntry[] = [];
       for (const row of selectedRows) {
-        const contact = rowContactState(row);
-        if (contact.incomplete) {
-          failed += 1;
-          errors.push(
-            `${row.clientCode}: Add a recipient name and mobile number`,
-          );
-          continue;
-        }
-
-        try {
-          await filingsApi.sendWhatsApp(row.id, {
-            templateId: bulkTemplateId,
-            phone: contact.phone || undefined,
-            savePhone: Boolean(contact.phone && contact.clientKey),
-            recipientName: contact.recipientName || undefined,
-            saveRecipientName: Boolean(
-              contact.recipientName && contact.clientKey,
-            ),
-            // One set of custom text for the whole batch — every recipient in
-            // this send gets the same wording.
-            ...(bulkCustomVariables.length > 0
-              ? { customValues: bulkCustomValues }
-              : {}),
-          });
-          if (contact.clientKey) {
-            phoneDraftsRef.current[contact.clientKey] = contact.phone;
-            recipientDraftsRef.current[contact.clientKey] =
-              contact.recipientName;
-            persistedPhoneRef.current[contact.clientKey] = contact.phone;
-            persistedNameRef.current[contact.clientKey] = contact.recipientName;
-          }
-          sent += 1;
-        } catch (error) {
-          failed += 1;
-          errors.push(
-            `${row.clientCode}: ${getApiErrorMessage(error, 'Send failed')}`,
-          );
-        }
+        results.push(await sendOneFilingWhatsApp(row));
       }
 
       void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
@@ -817,26 +858,134 @@ export function Form5WhatsAppPage() {
       void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
       setContactSyncKey((key) => key + 1);
 
-      if (failed === 0) {
-        toastSuccess(`Saved & sent WhatsApp for ${sent} client(s)`);
+      const sentCount = results.filter((item) => item.status === 'sent')
+        .length;
+      const actionable = results.filter((item) => item.status !== 'sent');
+
+      if (saveErrors.length > 0) {
+        toastError(saveErrors.slice(0, 3).join(' · '));
+      }
+
+      if (actionable.length === 0) {
+        toastSuccess(`Saved & sent WhatsApp for ${sentCount} client(s)`);
         setPreviewOpen(false);
         setSelectedIds(new Set());
-      } else if (sent > 0) {
-        toastSuccess(`Sent ${sent}. Failed ${failed}.`);
-        toastError(errors.slice(0, 3).join(' · '));
+        setBulkResults(null);
+      } else if (sentCount > 0) {
+        toastSuccess(
+          `Sent ${sentCount}. ${actionable.length} need attention — see the list below.`,
+        );
+        setBulkResults(actionable);
       } else {
-        toastError(errors[0] || 'Could not save & send WhatsApp messages');
+        toastError('No WhatsApp messages were sent. See the list below.');
+        setBulkResults(actionable);
       }
     } finally {
       setBulkSending(false);
     }
   };
 
+  /** Re-persist whatever's currently drafted for this row's client, then resend. */
+  const resendEntry = useCallback(
+    async (entry: BulkResultEntry): Promise<BulkResultEntry> => {
+      const clientKey = entry.row.client?.id;
+      if (clientKey) {
+        commitPersist(clientKey);
+        await (persistQueueRef.current[clientKey] ?? Promise.resolve());
+      }
+      return sendOneFilingWhatsApp(entry.row);
+    },
+    [commitPersist, sendOneFilingWhatsApp],
+  );
+
+  /** Drop a resent-and-sent row from the results list; otherwise update its status/message. */
+  const applyResendResult = useCallback((result: BulkResultEntry) => {
+    setBulkResults((current) => {
+      if (!current) return current;
+      if (result.status === 'sent') {
+        return current.filter((item) => item.filingId !== result.filingId);
+      }
+      return current.map((item) =>
+        item.filingId === result.filingId ? result : item,
+      );
+    });
+  }, []);
+
+  const handleResendOne = async (entry: BulkResultEntry) => {
+    setResendingIds((prev) => new Set(prev).add(entry.filingId));
+    try {
+      const result = await resendEntry(entry);
+      applyResendResult(result);
+      if (result.status === 'sent') {
+        toastSuccess(`Sent to ${result.row.clientCode}`);
+        void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
+        void queryClient.invalidateQueries({ queryKey: ['clients'] });
+        void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
+        setContactSyncKey((key) => key + 1);
+      } else {
+        toastError(`${result.row.clientCode}: ${result.message}`);
+      }
+    } finally {
+      setResendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.filingId);
+        return next;
+      });
+    }
+  };
+
+  const handleResendAll = async () => {
+    if (!bulkResults || bulkResults.length === 0) return;
+    setResendingAll(true);
+    const targets = [...bulkResults];
+    let sent = 0;
+    let stillNeedsAttention = 0;
+    try {
+      for (const entry of targets) {
+        setResendingIds((prev) => new Set(prev).add(entry.filingId));
+        const result = await resendEntry(entry);
+        applyResendResult(result);
+        setResendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(entry.filingId);
+          return next;
+        });
+        if (result.status === 'sent') sent += 1;
+        else stillNeedsAttention += 1;
+      }
+    } finally {
+      setResendingAll(false);
+    }
+    if (sent > 0) {
+      void queryClient.invalidateQueries({ queryKey: filingsQueryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
+      setContactSyncKey((key) => key + 1);
+    }
+    if (stillNeedsAttention === 0) {
+      toastSuccess(`Resent ${sent}. All caught up.`);
+    } else if (sent > 0) {
+      toastSuccess(`Resent ${sent}. ${stillNeedsAttention} still need attention.`);
+    } else {
+      toastError('Still could not send. Check mobile numbers and try again.');
+    }
+  };
+
+  /** Closing the preview after a batch: keep unresolved rows selected for later, forget the rest. */
+  const closeBulkResultsAndPreview = () => {
+    if (bulkResults) {
+      setSelectedIds(new Set(bulkResults.map((entry) => entry.filingId)));
+    }
+    setBulkResults(null);
+    setPreviewOpen(false);
+    setContactSyncKey((key) => key + 1);
+  };
+
   return (
     <div className="space-y-3">
       <PageHeader
         title="Form 5 WhatsApp"
-        description="Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Recipient name and mobile number are stored on the client master."
+        description='Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Mobile number is required; recipient name is optional and greets as "Dear" when left blank. Both are stored on the client master.'
         breadcrumbs={[
           { label: 'Home', href: PATHS.home },
           { label: 'Form 5', href: PATHS.form5 },
@@ -954,15 +1103,16 @@ export function Form5WhatsAppPage() {
           {incompleteOnly ? (
             <>
               Showing {incompleteCount} client
-              {incompleteCount === 1 ? '' : 's'} missing recipient name or
-              mobile on this page. Click again to show all rows.
+              {incompleteCount === 1 ? '' : 's'} missing a valid mobile number
+              on this page. Click again to show all rows.
             </>
           ) : (
             <>
               {incompleteCount} client{incompleteCount === 1 ? '' : 's'} on this
-              page {incompleteCount === 1 ? 'is' : 'are'} missing a recipient
-              name or a valid mobile number. Click to show only these records.
-              Highlighted fields need to be filled before send.
+              page {incompleteCount === 1 ? 'is' : 'are'} missing a valid
+              mobile number. Click to show only these records. Highlighted
+              fields need to be filled before send — recipient name is
+              optional and greets as &quot;Dear&quot; when left blank.
             </>
           )}
         </button>
@@ -996,44 +1146,167 @@ export function Form5WhatsAppPage() {
       <Modal
         open={previewOpen}
         onOpenChange={(open) => {
-          if (!bulkSending) {
-            setPreviewOpen(open);
-            if (!open) setContactSyncKey((key) => key + 1);
+          if (bulkSending || resendingAll) return;
+          if (!open) {
+            closeBulkResultsAndPreview();
+            return;
           }
+          setPreviewOpen(open);
         }}
-        title="WhatsApp send preview"
-        description="Pick a template, review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type."
+        title={bulkResults ? 'WhatsApp send results' : 'WhatsApp send preview'}
+        description={
+          bulkResults
+            ? 'Fix the mobile number and resend, or resend all once they look right.'
+            : 'Pick a template, review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type. Recipient name is optional and greets as "Dear" when left blank.'
+        }
         className="max-w-5xl"
-        closeOnOverlayClick={!bulkSending}
+        closeOnOverlayClick={!bulkSending && !resendingAll}
         footer={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={bulkSending}
-              onClick={() => setPreviewOpen(false)}
-            >
-              Cancel
-            </Button>
-            <PermissionGate permission={PERMISSIONS.FILINGS_SEND}>
+          bulkResults ? (
+            <>
               <Button
                 type="button"
-                disabled={
-                  selectedRows.length === 0 ||
-                  bulkSending ||
-                  !bulkTemplateId ||
-                  !hasAllCustomValues(bulkCustomVariables, bulkCustomValues)
-                }
-                loading={bulkSending}
-                onClick={() => void handleBulkSend()}
+                variant="outline"
+                disabled={resendingAll}
+                onClick={closeBulkResultsAndPreview}
               >
-                Send all ({selectedRows.length})
+                Close
               </Button>
-            </PermissionGate>
-          </>
+              <PermissionGate permission={PERMISSIONS.FILINGS_SEND}>
+                <Button
+                  type="button"
+                  disabled={bulkResults.length === 0 || resendingAll}
+                  loading={resendingAll}
+                  onClick={() => void handleResendAll()}
+                >
+                  Resend all ({bulkResults.length})
+                </Button>
+              </PermissionGate>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={bulkSending}
+                onClick={() => setPreviewOpen(false)}
+              >
+                Cancel
+              </Button>
+              <PermissionGate permission={PERMISSIONS.FILINGS_SEND}>
+                <Button
+                  type="button"
+                  disabled={
+                    selectedRows.length === 0 ||
+                    bulkSending ||
+                    !bulkTemplateId ||
+                    !hasAllCustomValues(bulkCustomVariables, bulkCustomValues)
+                  }
+                  loading={bulkSending}
+                  onClick={() => void handleBulkSend()}
+                >
+                  Send all ({selectedRows.length})
+                </Button>
+              </PermissionGate>
+            </>
+          )
         }
       >
-        {selectedRows.length === 0 ? (
+        {bulkResults ? (
+          <div className="flex flex-col gap-4">
+            {bulkResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                All caught up — every recipient in this batch has been sent.
+              </p>
+            ) : (
+              <div className="max-h-[55vh] overflow-auto">
+                <table className="w-full min-w-3xl border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="px-2 py-2 font-medium">Client</th>
+                      <th className="px-2 py-2 font-medium">Status</th>
+                      <th className="px-2 py-2 font-medium">Mobile number</th>
+                      <th className="px-2 py-2 font-medium">Reason</th>
+                      <th className="px-2 py-2 font-medium text-right">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkResults.map((entry) => {
+                      const contact = rowContactState(entry.row);
+                      const company =
+                        entry.row.client?.companyName ||
+                        entry.row.clientCode ||
+                        '—';
+                      const resending = resendingIds.has(entry.filingId);
+                      return (
+                        <tr
+                          key={entry.filingId}
+                          className="border-b border-border/70 align-middle"
+                        >
+                          <td className="px-2 py-2">
+                            <p className="font-medium">{company}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {entry.row.clientCode}
+                            </p>
+                          </td>
+                          <td className="px-2 py-2">
+                            <Badge
+                              variant={
+                                entry.status === 'failed'
+                                  ? 'destructive'
+                                  : 'warning'
+                              }
+                            >
+                              {entry.status === 'failed' ? 'Failed' : 'Skipped'}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-2">
+                            {contact.clientKey ? (
+                              <WhatsAppDraftField
+                                key={`${contact.clientKey}-resend-phone-${contactSyncKey}`}
+                                clientId={contact.clientKey}
+                                draftValue={getDraftPhone(
+                                  contact.clientKey,
+                                  contact.savedPhone,
+                                )}
+                                placeholder="10-digit mobile"
+                                kind="phone"
+                                disabled={
+                                  !canEditClient || resending || resendingAll
+                                }
+                                onDraftChange={handlePhoneDraftChange}
+                                onCommit={commitPersist}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="max-w-[14rem] px-2 py-2 text-xs text-muted-foreground">
+                            {entry.message}
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={resending}
+                              disabled={resendingAll}
+                              onClick={() => void handleResendOne(entry)}
+                            >
+                              Resend
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : selectedRows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No rows selected. Close this dialog and select filings first.
           </p>
@@ -1072,7 +1345,9 @@ export function Form5WhatsAppPage() {
                     <th className="px-2 py-2 font-medium">Client</th>
                     <th className="px-2 py-2 font-medium">Month</th>
                     <th className="px-2 py-2 font-medium">Mobile number</th>
-                    <th className="px-2 py-2 font-medium">Recipient name</th>
+                    <th className="px-2 py-2 font-medium">
+                      Recipient name (optional)
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1122,7 +1397,7 @@ export function Form5WhatsAppPage() {
                                 contact.clientKey,
                                 contact.savedName,
                               )}
-                              placeholder="Person who receives this"
+                              placeholder='Defaults to "Dear"'
                               disabled={!canEditClient || bulkSending}
                               onDraftChange={handleRecipientDraftChange}
                               onCommit={commitPersist}
