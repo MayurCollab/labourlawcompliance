@@ -1131,9 +1131,6 @@ const clientRefId = (client) => {
 const templateAttachesDocument = (template) =>
   template.bodyMode !== WHATSAPP_BODY_MODES.SINGLE;
 
-/** Recipient name is optional at send time — greet generically when none is set. */
-const DEFAULT_WHATSAPP_RECIPIENT_NAME = 'Dear';
-
 /**
  * Same override → client → org-default fallback the Form 5 PDF itself uses
  * (see buildForm5Values in form5Values.js) — without it, WhatsApp showed a
@@ -1216,15 +1213,16 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
 
   const settings = await settingsService.getSettings();
 
-  // Build source data for template resolution — recipient name is optional,
-  // so fall back to a generic greeting rather than sending an empty value.
+  // Build source data for template resolution — recipient name is optional
+  // and, when blank, is resolved to an empty value; resolveWhatsAppMessage
+  // skips it in the missing-field check and cleans up the surrounding text.
   // Signatory name falls back the same way the Form 5 PDF itself does.
   const sourceData = buildWhatsAppSourceData({
     client: filing.client,
     clientCode: filing.clientCode,
     period: filing.period,
     periodLabel: filing.periodLabel,
-    recipientName: rawRecipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
+    recipientName: rawRecipientName,
     signatoryName: resolveSignatoryName(filing, settings),
   });
 
@@ -1438,7 +1436,9 @@ export const bulkSendFilingsWhatsApp = async (
       continue;
     }
 
-    // Recipient name is optional — greet generically when none is set.
+    // Recipient name is optional — resolved to empty when none is set;
+    // resolveWhatsAppMessage skips it in the missing-field check and cleans
+    // up the surrounding text.
     const rawRecipientName = String(filing.client?.recipientName ?? '').trim();
 
     // Build source data and resolve template
@@ -1447,7 +1447,7 @@ export const bulkSendFilingsWhatsApp = async (
       clientCode: filing.clientCode,
       period: filing.period,
       periodLabel: filing.periodLabel,
-      recipientName: rawRecipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
+      recipientName: rawRecipientName,
       signatoryName: resolveSignatoryName(filing, settings),
     });
 

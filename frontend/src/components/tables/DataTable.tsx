@@ -10,11 +10,13 @@ import { createPortal } from 'react-dom';
 import {
   ModuleRegistry,
   AllCommunityModule,
+  type CellDoubleClickedEvent,
   type ColDef,
   type GridApi,
   type GridReadyEvent,
   type ICellRendererParams,
   type IHeaderParams,
+  type RowHeightParams,
   type SortDirection as AgSortDirection,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
@@ -98,9 +100,33 @@ export type DataTableProps<T> = {
   hideColumnSizing?: boolean;
   /** Show Maximize / Minimize so the table can open full screen (Escape exits). */
   fullscreenTitle?: ReactNode;
+  /** Whether `row` currently has its inline detail panel open. */
+  isRowExpanded?: (row: T) => boolean;
+  /** Content for the full-width detail row shown directly under an expanded row. */
+  renderExpandedRow?: (row: T) => ReactNode;
+  /** Double-clicking a row (outside the select/actions columns) fires this. */
+  onRowDoubleClick?: (row: T) => void;
+  /** Height (px) of the expanded detail row. */
+  expandedRowHeight?: number;
 };
 
 const DEFAULT_STICKY_HEIGHT = 'calc(100dvh - 13rem)';
+const DEFAULT_EXPANDED_ROW_HEIGHT = 280;
+
+/** Columns a double-click on should never toggle row expansion (icon actions). */
+const DOUBLE_CLICK_IGNORE_COLUMN_IDS = new Set(['select', 'whatsapp', 'actions']);
+
+/**
+ * Every row is wrapped so an optional full-width "detail" row can be
+ * interleaved right after its parent — AG Grid Community has no built-in
+ * Master/Detail (that's Enterprise-only), but its lower-level Full Width Row
+ * feature achieves the same effect and stays virtualization-safe. When no
+ * caller opts into `renderExpandedRow`, `kind` is always `'row'`, so this is
+ * a no-op wrapper for every other consumer of this component.
+ */
+type RowEntry<T> =
+  | { kind: 'row'; row: T; id: string }
+  | { kind: 'detail'; row: T; id: string };
 
 const getValue = <T,>(row: T, key?: string): ReactNode => {
   if (!key) return null;
@@ -193,8 +219,12 @@ export function DataTable<T>({
   gridMaxHeight,
   hideColumnSizing = false,
   fullscreenTitle,
+  isRowExpanded,
+  renderExpandedRow,
+  onRowDoubleClick,
+  expandedRowHeight = DEFAULT_EXPANDED_ROW_HEIGHT,
 }: DataTableProps<T>) {
-  const gridApiRef = useRef<GridApi<T> | null>(null);
+  const gridApiRef = useRef<GridApi<RowEntry<T>> | null>(null);
   const [columnSizing, setColumnSizing] =
     useState<DataTableColumnSizing>('fit');
   const [maximized, setMaximized] = useState(false);
@@ -214,7 +244,7 @@ export function DataTable<T>({
   const fillParentHeight = !useAutoHeight && activeGridMaxHeight === '100%';
   const stickyViewport = !useAutoHeight && activeGridMaxHeight == null;
 
-  const columnDefs = useMemo<ColDef<T>[]>(
+  const columnDefs = useMemo<ColDef<RowEntry<T>>[]>(
     () =>
       columns.map((column) => {
         const canSort = Boolean(column.sortable && onSortChange);
@@ -227,7 +257,7 @@ export function DataTable<T>({
         const defaultWidth = isActions ? 180 : isSelect ? 56 : undefined;
         const fixedWidth = Boolean(isActions || isSelect || column.width);
 
-        const def: ColDef<T> = {
+        const def: ColDef<RowEntry<T>> = {
           colId: column.id,
           headerName: typeof column.header === 'string' ? column.header : column.id,
           sortable: false,
@@ -256,17 +286,14 @@ export function DataTable<T>({
             sort,
             onSortChange,
           },
-          cellRenderer: (params: ICellRendererParams<T>) => {
-            if (!params.data) return null;
-            if (column.cell) return column.cell(params.data);
-            return getValue(params.data, column.accessorKey);
+          cellRenderer: (params: ICellRendererParams<RowEntry<T>>) => {
+            if (!params.data || params.data.kind === 'detail') return null;
+            const row = params.data.row;
+            if (column.cell) return column.cell(row);
+            return getValue(row, column.accessorKey);
           },
           comparator: () => 0,
         };
-
-        if (column.accessorKey) {
-          def.field = column.accessorKey as unknown as ColDef<T>['field'];
-        }
 
         return def;
       }),
@@ -274,7 +301,7 @@ export function DataTable<T>({
   );
 
   const applyColumnSizing = useCallback(
-    (api: GridApi<T> | null | undefined, mode: DataTableColumnSizing) => {
+    (api: GridApi<RowEntry<T>> | null | undefined, mode: DataTableColumnSizing) => {
       if (!api || (typeof api.isDestroyed === 'function' && api.isDestroyed())) {
         return;
       }
@@ -291,17 +318,75 @@ export function DataTable<T>({
     [],
   );
 
+  const rowEntries = useMemo<RowEntry<T>[]>(() => {
+    const out: RowEntry<T>[] = [];
+    for (const row of data) {
+      const id = rowKey(row);
+      out.push({ kind: 'row', row, id });
+      if (renderExpandedRow && isRowExpanded?.(row)) {
+        out.push({ kind: 'detail', row, id: `${id}__detail` });
+      }
+    }
+    return out;
+  }, [data, rowKey, renderExpandedRow, isRowExpanded]);
+
   const getRowId = useCallback(
-    (params: { data: T }) => rowKey(params.data),
-    [rowKey],
+    (params: { data: RowEntry<T> }) => params.data.id,
+    [],
   );
 
   const onGridReady = useCallback(
-    (event: GridReadyEvent<T>) => {
+    (event: GridReadyEvent<RowEntry<T>>) => {
       gridApiRef.current = event.api;
       applyColumnSizing(event.api, columnSizing);
     },
     [applyColumnSizing, columnSizing],
+  );
+
+  const onCellDoubleClicked = useCallback(
+    (event: CellDoubleClickedEvent<RowEntry<T>>) => {
+      if (!onRowDoubleClick) return;
+      if (!event.data || event.data.kind !== 'row') return;
+      const colId = event.column?.getColId?.();
+      if (colId && DOUBLE_CLICK_IGNORE_COLUMN_IDS.has(colId)) return;
+      onRowDoubleClick(event.data.row);
+    },
+    [onRowDoubleClick],
+  );
+
+  const isFullWidthRow = useCallback(
+    (params: { rowNode: { data?: RowEntry<T> } }) =>
+      params.rowNode.data?.kind === 'detail',
+    [],
+  );
+
+  const fullWidthCellRenderer = useCallback(
+    (params: ICellRendererParams<RowEntry<T>>) => {
+      if (!params.data || params.data.kind !== 'detail' || !renderExpandedRow) {
+        return null;
+      }
+      return (
+        <div className="llc-ag-detail-row h-full">
+          {renderExpandedRow(params.data.row)}
+        </div>
+      );
+    },
+    [renderExpandedRow],
+  );
+
+  const getRowHeight = useCallback(
+    (params: RowHeightParams<RowEntry<T>>) =>
+      params.data?.kind === 'detail' ? expandedRowHeight : undefined,
+    [expandedRowHeight],
+  );
+
+  /** Highlights the parent row that owns the currently-open detail panel. */
+  const getRowClass = useCallback(
+    (params: { data?: RowEntry<T> }) =>
+      params.data?.kind === 'row' && isRowExpanded?.(params.data.row)
+        ? 'llc-ag-row-expanded'
+        : undefined,
+    [isRowExpanded],
   );
 
   useEffect(() => {
@@ -434,20 +519,20 @@ export function DataTable<T>({
           />
         ) : (
           <div
-            className="llc-ag-grid"
+            className={cn('llc-ag-grid', onRowDoubleClick && 'llc-ag-grid--expandable')}
             style={{
               width: '100%',
               height: useAutoHeight ? undefined : '100%',
               minHeight: data.length === 0 ? 220 : undefined,
             }}
           >
-            <AgGridReact<T>
+            <AgGridReact<RowEntry<T>>
               theme={appAgGridTheme}
               containerStyle={{
                 width: '100%',
                 height: useAutoHeight ? undefined : '100%',
               }}
-              rowData={data}
+              rowData={rowEntries}
               columnDefs={columnDefs}
               getRowId={getRowId}
               domLayout={useAutoHeight ? 'autoHeight' : 'normal'}
@@ -460,6 +545,15 @@ export function DataTable<T>({
               ensureDomOrder
               headerHeight={34}
               rowHeight={40}
+              getRowHeight={renderExpandedRow ? getRowHeight : undefined}
+              getRowClass={renderExpandedRow ? getRowClass : undefined}
+              isFullWidthRow={renderExpandedRow ? isFullWidthRow : undefined}
+              fullWidthCellRenderer={
+                renderExpandedRow ? fullWidthCellRenderer : undefined
+              }
+              onCellDoubleClicked={
+                onRowDoubleClick ? onCellDoubleClicked : undefined
+              }
               onGridReady={onGridReady}
               onFirstDataRendered={(event) => {
                 applyColumnSizing(event.api, columnSizing);

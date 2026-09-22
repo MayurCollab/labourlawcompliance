@@ -7,6 +7,8 @@ import type {
   ListClientsParams,
   ListClientsResult,
   Location,
+  SendClientWhatsAppPayload,
+  SendClientWhatsAppResult,
   UpdateClientPayload,
 } from '@/types/client.types';
 import {
@@ -24,6 +26,8 @@ const toQuery = (params: ListClientsParams) => {
     query.locationIds = params.locationIds.join(',');
   }
   if (params.fundCode) query.fundCode = params.fundCode;
+  if (params.generateStatus) query.generateStatus = params.generateStatus;
+  if (params.recentlyAdded) query.recentlyAdded = 'true';
   if (params.sortBy) query.sortBy = params.sortBy;
   if (params.sortOrder) query.sortOrder = params.sortOrder;
   return query;
@@ -67,6 +71,16 @@ export const clientsApi = {
 
   remove: async (id: string): Promise<void> => {
     await axiosInstance.delete(`/api/v1/clients/${id}`);
+  },
+
+  sendWhatsApp: async (
+    id: string,
+    payload: SendClientWhatsAppPayload,
+  ): Promise<SendClientWhatsAppResult> => {
+    const { data } = await axiosInstance.post<
+      ApiSuccessResponse<SendClientWhatsAppResult>
+    >(`/api/v1/clients/${id}/whatsapp`, payload);
+    return data.data;
   },
 
   options: async (): Promise<ClientOptionsResult> => {

@@ -1,3 +1,4 @@
+import type { Client } from '@/types/client.types';
 import type { Filing } from '@/types/filing.types';
 import type {
   WhatsAppCustomValues,
@@ -40,9 +41,6 @@ const parsePeriod = (period: string | null | undefined) => {
   };
 };
 
-/** Recipient name is optional at send time — mirrors the backend's fallback. */
-const DEFAULT_WHATSAPP_RECIPIENT_NAME = 'Dear';
-
 /**
  * Build source data from a filing row for template resolution.
  * Mirrors backend buildWhatsAppSourceData function.
@@ -65,7 +63,7 @@ export const buildWhatsAppSourceData = (
   ).trim();
 
   return {
-    recipientName: recipientName || DEFAULT_WHATSAPP_RECIPIENT_NAME,
+    recipientName,
     companyName: String(filing.client?.companyName ?? '').trim(),
     clientCode: String(filing.clientCode ?? '').trim(),
     month: monthName,
@@ -76,6 +74,67 @@ export const buildWhatsAppSourceData = (
     ).trim(),
   };
 };
+
+/**
+ * Short display label for a period, e.g. "Jul-2026". Mirrors the backend's
+ * formatPeriodLabel (utils/period.js) — used when a period is picked ad hoc
+ * here rather than read off an existing filing's own stored periodLabel.
+ */
+export const formatPeriodLabel = (period: string | null | undefined): string => {
+  const { monthName, year } = parsePeriod(period);
+  if (!monthName || !year) return '';
+  return `${monthName.slice(0, 3)}-${year}`;
+};
+
+/**
+ * Build source data from a client record for template resolution — used by
+ * the Clients WhatsApp flow, which sends message templates directly against
+ * a client with no generated document. There is no filing here, so
+ * month/year/periodLabel are only populated when the operator picks a period
+ * up front (only required when the template actually references one).
+ */
+export const buildWhatsAppSourceDataForClient = (
+  client: Client,
+  recipientNameOverride?: string,
+  signatoryNameOverride?: string,
+  period?: string,
+): WhatsAppSourceData => {
+  const { monthName, year } = parsePeriod(period);
+  return {
+    recipientName: String(
+      recipientNameOverride ?? client.recipientName ?? '',
+    ).trim(),
+    companyName: String(client.companyName ?? '').trim(),
+    clientCode: String(client.clientCode ?? '').trim(),
+    month: monthName,
+    year,
+    periodLabel: formatPeriodLabel(period),
+    signatoryName: String(
+      signatoryNameOverride ?? client.signatoryName ?? '',
+    ).trim(),
+  };
+};
+
+/** Field keys only ever available from a period — never from a bare client record. */
+const PERIOD_DEPENDENT_FIELDS: WhatsAppTemplateField['field'][] = [
+  'month',
+  'year',
+  'periodLabel',
+];
+
+/**
+ * Whether a template references month/year/periodLabel — the fields that
+ * only come from a period, never from a client record alone. Drives whether
+ * the Clients send modal needs to ask for a period before sending.
+ */
+export const templateUsesPeriodFields = (
+  variables: WhatsAppTemplateVariable[] | undefined,
+): boolean =>
+  (variables ?? []).some(
+    (variable) =>
+      variable.type === 'field' &&
+      PERIOD_DEPENDENT_FIELDS.includes(variable.field),
+  );
 
 /** Custom variables on a template, in body order. */
 export const collectCustomVariables = (
@@ -123,6 +182,20 @@ export const collapseWhatsAppBodyLineBreaks = (text: string): string =>
  * Custom variables show the typed text, or a bracketed (unbolded) hint while
  * empty — wording fixed inside the approved template passes through untouched.
  */
+/**
+ * Removing an empty variable (e.g. a blank recipient name) can leave the
+ * surrounding literal text with an orphan space before punctuation, or a run
+ * of double spaces where the value used to sit — "Hii , Please" instead of
+ * "Hii, Please". Tidy that up after substitution so a skipped token never
+ * reads as a typo. Only touches spaces/tabs, never line breaks. Mirrors the
+ * backend's cleanupResolvedText (whatsappTemplates.resolve.js).
+ */
+const cleanupWhatsAppPreviewText = (text: string): string =>
+  text
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    .trim();
+
 export const resolveWhatsAppPreview = (
   bodyPreview: string,
   fields: WhatsAppTemplateField[],
@@ -144,7 +217,7 @@ export const resolveWhatsAppPreview = (
     resolved = resolved.split(variable.token).join(shown);
   }
 
-  return resolved;
+  return cleanupWhatsAppPreviewText(resolved);
 };
 
 /**

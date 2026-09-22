@@ -1,17 +1,33 @@
 import AppError from '../../utils/AppError.js';
 import { sanitizeUserHtml } from '../../utils/sanitize.js';
+import { normalizeWhatsAppPhone } from '../../integrations/msg91/phone.js';
+import { sendWhatsAppTemplateBatch } from '../../integrations/msg91/whatsapp.js';
 import {
   ACTIVITY_ACTIONS,
   ENTITY_TYPES,
 } from '../activity/activity.constants.js';
 import { recordActivity } from '../activity/activity.service.js';
+import * as filingsRepository from '../filings/filings.repository.js';
 import { toLocationNameKey } from '../locations/locations.constants.js';
 import * as locationsService from '../locations/locations.service.js';
+import * as settingsService from '../settings/settings.service.js';
 import {
   rememberClient,
   rememberLocation,
 } from '../uploads/importCache.js';
 import { extractPhyCode, legalCompanyName, normalizePhyCode } from '../uploads/masterParse.js';
+import * as uploadsRepository from '../uploads/uploads.repository.js';
+import { formatPeriodLabel } from '../../utils/period.js';
+import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
+import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
+import * as whatsappTemplatesService from '../whatsappTemplates/whatsappTemplates.service.js';
+import { WHATSAPP_BODY_MODES } from '../whatsappTemplates/whatsappTemplates.constants.js';
+import {
+  buildWhatsAppSourceData,
+  resolveWhatsAppMessage,
+  toTemplateSnapshot,
+  missingFieldsMessage,
+} from '../whatsappTemplates/whatsappTemplates.resolve.js';
 import { CLIENTS_CODES, normalizeClientCode } from './clients.constants.js';
 import { toClientDto, toClientListDto } from './clients.dto.js';
 import { buildClientsWorkbook } from './clientsExport.js';
@@ -88,13 +104,77 @@ const buildClientListFilter = ({ search, locationId, locationIds, fundCode }) =>
   return filter;
 };
 
+/**
+ * Client codes from the most recent imported MasterSheet — mirrors
+ * filings.service.js's lastImportedMasterClientCodes, kept local to this
+ * module (rather than shared) so clients.service.js never has to import
+ * anything from the filings module for it.
+ */
+const lastImportedMasterClientCodes = async () => {
+  const upload = await uploadsRepository.findLatestImportedMaster();
+  if (!upload) return [];
+
+  const report = upload.report || {};
+  const fromSheet = Array.isArray(report.clientCodes)
+    ? report.clientCodes.filter(Boolean)
+    : [];
+  if (fromSheet.length) return [...new Set(fromSheet)];
+
+  // Older imports did not store codes; approximate with clients touched in
+  // the same window as the import.
+  const importedAt = upload.updatedAt || upload.createdAt;
+  if (!importedAt) return [];
+  const start = new Date(new Date(importedAt).getTime() - 5_000);
+  const end = new Date(new Date(importedAt).getTime() + 5 * 60 * 1000);
+  const docs = await clientsRepository.findClientCodesUpdatedBetween(start, end);
+  return [...new Set(docs.map((doc) => doc.clientCode).filter(Boolean))];
+};
+
+/** Client ids whose most recent Form 5 filing has the given generateStatus. */
+const clientIdsMatchingGenerateStatus = async (status) => {
+  const rows = await filingsRepository.findLatestFilingStatusByClientIds();
+  return rows
+    .filter((row) => row.generateStatus === status)
+    .map((row) => String(row._id))
+    .filter(Boolean);
+};
+
+/**
+ * Adds the Clients page's Pending/Generated/Failed and Recently added
+ * filters on top of the base search/location/fundCode filter — both need an
+ * extra lookup (Form 5 status per client, last MasterSheet import) before
+ * they can narrow the Client query itself.
+ */
+const buildClientListFilterAsync = async (query) => {
+  const filter = buildClientListFilter(query);
+  const restrictions = [];
+
+  if (query.recentlyAdded) {
+    const codes = await lastImportedMasterClientCodes();
+    if (!codes.length) return { _id: { $in: [] } };
+    restrictions.push({ clientCode: { $in: codes } });
+  }
+
+  if (query.generateStatus) {
+    const ids = await clientIdsMatchingGenerateStatus(query.generateStatus);
+    if (!ids.length) return { _id: { $in: [] } };
+    restrictions.push({ _id: { $in: ids } });
+  }
+
+  if (restrictions.length) {
+    filter.$and = [...(filter.$and || []), ...restrictions];
+  }
+
+  return filter;
+};
+
 const sortFromQuery = ({ sortBy, sortOrder }) => ({
   [sortBy]: sortOrder === 'asc' ? 1 : -1,
 });
 
 export const listClients = async (query) => {
   const { page, limit, sortBy, sortOrder } = query;
-  const filter = buildClientListFilter(query);
+  const filter = await buildClientListFilterAsync(query);
   const skip = (page - 1) * limit;
   const sort = sortFromQuery({ sortBy, sortOrder });
 
@@ -103,8 +183,27 @@ export const listClients = async (query) => {
     clientsRepository.countClients(filter),
   ]);
 
+  const latestFilingRows = await filingsRepository.findLatestFilingStatusByClientIds(
+    clients.map((client) => client.id),
+  );
+  const latestFilingByClientId = new Map(
+    latestFilingRows.map((row) => [String(row._id), row]),
+  );
+
   return {
-    clients: toClientListDto(clients),
+    clients: toClientListDto(clients).map((dto) => {
+      const latest = latestFilingByClientId.get(String(dto.id));
+      return {
+        ...dto,
+        latestFiling: latest
+          ? {
+              generateStatus: latest.generateStatus,
+              period: latest.period,
+              periodLabel: latest.periodLabel,
+            }
+          : null,
+      };
+    }),
     pagination: {
       page,
       limit,
@@ -118,7 +217,7 @@ export const listClients = async (query) => {
  * Excel of matching clients (same filters as the list, no pagination).
  */
 export const exportClients = async (query) => {
-  const filter = buildClientListFilter(query);
+  const filter = await buildClientListFilterAsync(query);
   const sort = sortFromQuery(query);
   const clients = await clientsRepository.findClientsForExport(filter, {
     sort,
@@ -629,5 +728,183 @@ export const upsertFromClientMasterRow = async (
     actorId,
     cache,
   );
+};
+
+/**
+ * A 'positional' (Template 1's shape) template exists to carry the generated
+ * Form 5 PDF as a document header — sending it from the Clients page would
+ * either attach nothing (breaking the approved template shape) or require
+ * generating a Form 5 first, which is exactly what this flow must never
+ * depend on. Only a 'single' (plain-text) message template is allowed here;
+ * Form 5 templates stay on the Form 5 WhatsApp page.
+ */
+const isMessageOnlyTemplate = (template) =>
+  template.bodyMode === WHATSAPP_BODY_MODES.SINGLE;
+
+/**
+ * Send a WhatsApp message to a client directly from the Clients page — no
+ * Form 5 filing or generated document involved. Only 'single' (message-only)
+ * templates are accepted; this is what keeps this flow from ever touching
+ * the Form 5 generate/send process.
+ */
+export const sendClientWhatsApp = async (id, body, actorId) => {
+  const client = await findClientOrFail(id);
+
+  const template = await whatsappTemplatesService.getActiveTemplateOrFail(
+    body.templateId,
+  );
+  if (!isMessageOnlyTemplate(template)) {
+    throw new AppError(
+      'Only WhatsApp message templates can be sent from the Clients page. Send Form 5 templates from the Form 5 WhatsApp page.',
+      400,
+      { code: CLIENTS_CODES.WHATSAPP_TEMPLATE_REQUIRES_DOCUMENT },
+    );
+  }
+
+  const rawPhone =
+    body?.phone !== undefined && body?.phone !== null && String(body.phone).trim()
+      ? String(body.phone).trim()
+      : client.contactNumber;
+
+  if (!rawPhone) {
+    throw new AppError(
+      'Add a mobile number for this client before sending on WhatsApp.',
+      400,
+      { code: CLIENTS_CODES.WHATSAPP_PHONE_REQUIRED },
+    );
+  }
+
+  const phone = normalizeWhatsAppPhone(rawPhone);
+  if (!phone) {
+    throw new AppError('Mobile number is invalid.', 400, {
+      code: CLIENTS_CODES.WHATSAPP_PHONE_INVALID,
+    });
+  }
+
+  const rawRecipientName =
+    body?.recipientName !== undefined &&
+    body?.recipientName !== null &&
+    String(body.recipientName).trim()
+      ? String(body.recipientName).trim()
+      : String(client.recipientName ?? '').trim();
+
+  // No filing here — this flow sends message templates directly against a
+  // client, with no generated document. A template can still reference
+  // {{Period}}/month/year though (e.g. a periodic reminder); when it does,
+  // the caller picks a period up front and we synthesize a label from it,
+  // same as the Form 5 send would read off a filing's own periodLabel.
+  const period = body?.period || null;
+  const settings = await settingsService.getSettings();
+
+  const sourceData = buildWhatsAppSourceData({
+    client,
+    clientCode: client.clientCode,
+    period,
+    periodLabel: formatPeriodLabel(period),
+    recipientName: rawRecipientName,
+    // Same override → client → org-default chain Form 5 sends use (see
+    // resolveSignatoryName in filings.service.js) — otherwise this always
+    // reported "Signatory name" missing for any client relying on the
+    // org-wide default.
+    signatoryName: client.signatoryName || settings?.signatoryName || '',
+  });
+
+  const { bodyValues, missing } = resolveWhatsAppMessage(
+    template,
+    sourceData,
+    body?.customValues,
+  );
+
+  if (missing.length > 0) {
+    throw new AppError(missingFieldsMessage(missing), 400, {
+      code: CLIENTS_CODES.WHATSAPP_MISSING_FIELDS,
+    });
+  }
+
+  const shouldSavePhone = body?.savePhone !== false;
+  const shouldSaveRecipient = body?.saveRecipientName !== false;
+  const clientPatch = {};
+  if (shouldSavePhone && body?.phone !== undefined) {
+    clientPatch.contactNumber = String(body.phone).trim() || null;
+  }
+  if (shouldSaveRecipient && body?.recipientName !== undefined) {
+    clientPatch.recipientName = String(body.recipientName).trim() || null;
+  }
+  if (Object.keys(clientPatch).length) {
+    await updateClient(id, clientPatch, actorId);
+  }
+
+  const templateSnapshot = toTemplateSnapshot(template);
+  const sendLedgerBase = {
+    clientId: id,
+    clientCode: client.clientCode,
+    companyName: client.companyName || client.clientCode || null,
+    phone,
+    period,
+    periodLabel: sourceData.periodLabel || null,
+    whatsappTemplateId: template.id || template._id,
+    templateSnapshot,
+    actorId,
+  };
+
+  let msg91Response;
+  try {
+    const result = await sendWhatsAppTemplateBatch({
+      template: {
+        name: template.msg91TemplateName,
+        namespace: template.namespace,
+        language: template.languageCode || 'en',
+      },
+      entries: [
+        {
+          to: [phone],
+          filename: null,
+          mediaUrl: null,
+          bodyValues,
+        },
+      ],
+    });
+
+    if (!result.chunks?.[0]?.ok) {
+      throw new AppError(
+        result.chunks?.[0]?.error?.message || 'MSG91 API call failed',
+        500,
+      );
+    }
+    msg91Response = result.chunks[0].response;
+  } catch (error) {
+    await recordWhatsAppSend({
+      ...sendLedgerBase,
+      status: WHATSAPP_SEND_STATUSES.FAILED,
+      errorMessage: error?.message || 'WhatsApp send failed',
+      failedAt: new Date(),
+    });
+    throw error;
+  }
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.CLIENT_WHATSAPP_SEND,
+    entityType: ENTITY_TYPES.CLIENT,
+    entityId: id,
+    changes: {
+      phone,
+      recipientName: rawRecipientName,
+      clientCode: client.clientCode,
+      templateLabel: template.label,
+    },
+  });
+
+  await recordWhatsAppSend({
+    ...sendLedgerBase,
+    status: WHATSAPP_SEND_STATUSES.ACCEPTED,
+    providerResponse: msg91Response,
+    sentAt: new Date(),
+  });
+
+  return {
+    client: await getClient(id),
+    phone,
+    msg91: msg91Response,
+  };
 };
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { KeyRound, LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { KeyRound, LogOut, Menu, Moon, Settings, Sun } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { Avatar } from '@/components/common/Avatar';
@@ -161,6 +161,15 @@ export function Navbar({
                       {user?.email}
                     </p>
                   </div>
+                  <Link
+                    role="menuitem"
+                    to={PATHS.settings}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <Settings className="size-4" aria-hidden />
+                    Settings
+                  </Link>
                   <Link
                     role="menuitem"
                     to={PATHS.changePassword}

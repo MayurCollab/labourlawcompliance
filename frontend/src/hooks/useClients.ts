@@ -4,6 +4,7 @@ import { clientsApi, locationsApi } from '@/api/clients.api';
 import type {
   ClientPayload,
   ListClientsParams,
+  SendClientWhatsAppPayload,
   UpdateClientPayload,
 } from '@/types/client.types';
 import { getApiErrorMessage } from '@/utils/apiError';
@@ -109,6 +110,28 @@ export const useExportClientsMutation = () =>
       toastError(getApiErrorMessage(error, 'Could not download clients'));
     },
   });
+
+export const useSendClientWhatsAppMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['clients', 'whatsapp'],
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: SendClientWhatsAppPayload;
+    }) => clientsApi.sendWhatsApp(id, payload),
+    onSuccess: (result) => {
+      toastSuccess(`WhatsApp sent to ${result.phone}`);
+      void queryClient.invalidateQueries({ queryKey: clientsQueryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-sends'] });
+    },
+    onError: (error) => {
+      toastError(getApiErrorMessage(error, 'Could not send WhatsApp message'));
+    },
+  });
+};
 
 export const useDeleteClientMutation = () => {
   const queryClient = useQueryClient();

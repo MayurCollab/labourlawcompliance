@@ -36,6 +36,7 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   CLIENT_UPDATE: 'clients.update',
   CLIENT_SOFT_DELETE: 'clients.soft_delete',
   CLIENT_EXPORT: 'clients.export',
+  CLIENT_WHATSAPP_SEND: 'clients.whatsapp_send',
 
   EMPLOYEE_CREATE: 'employees.create',
   EMPLOYEE_UPDATE: 'employees.update',

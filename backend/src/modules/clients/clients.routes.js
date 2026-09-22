@@ -12,6 +12,7 @@ import {
   createClientSchema,
   exportClientsQuerySchema,
   listClientsQuerySchema,
+  sendClientWhatsAppSchema,
   updateClientSchema,
 } from './clients.validation.js';
 
@@ -182,6 +183,21 @@ router.delete(
   checkPermission(PERMISSION_NAMES.CLIENTS_DELETE),
   validate({ params: idParamSchema }),
   clientsController.deleteClient,
+);
+
+/**
+ * @openapi
+ * /clients/{id}/whatsapp:
+ *   post:
+ *     tags: [Clients]
+ *     summary: Send a WhatsApp message template directly to a client
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post(
+  '/:id/whatsapp',
+  checkPermission(PERMISSION_NAMES.CLIENTS_SEND),
+  validate({ params: idParamSchema, body: sendClientWhatsAppSchema }),
+  clientsController.sendClientWhatsApp,
 );
 
 export default router;

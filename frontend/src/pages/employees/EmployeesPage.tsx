@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
@@ -17,10 +17,6 @@ import {
   type DataTablePageSizeOption,
   type DataTableSort,
 } from '@/components/tables';
-import {
-  RowActionItem,
-  RowActionsMenu,
-} from '@/components/tables/RowActionsMenu';
 import { PERMISSIONS } from '@/constants/permissions';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
@@ -31,7 +27,7 @@ import {
   useEmployeesQuery,
   useUpdateEmployeeMutation,
 } from '@/hooks/useEmployees';
-import { EmployeeFormDrawer } from '@/pages/employees/EmployeeFormDrawer';
+import { EmployeeFormModal } from '@/pages/employees/EmployeeFormModal';
 import { PATHS } from '@/routes/paths';
 import type {
   Employee,
@@ -90,7 +86,6 @@ export function EmployeesPage() {
     null,
   );
   const [pendingDelete, setPendingDelete] = useState<Employee | null>(null);
-  const [menuEmployeeId, setMenuEmployeeId] = useState<string | null>(null);
 
   const debouncedSearchInput = useDebouncedValue(searchInput);
   useEffect(() => {
@@ -189,45 +184,45 @@ export function EmployeesPage() {
         id: 'actions',
         header: '',
         className: 'text-right',
-        width: 72,
-        minWidth: 72,
-        maxWidth: 72,
-        cell: (row) => {
-          const open = menuEmployeeId === row.id;
-          return (
-            <RowActionsMenu
-              open={open}
-              onOpenChange={(next) => setMenuEmployeeId(next ? row.id : null)}
-            >
-              <PermissionGate permission={PERMISSIONS.EMPLOYEES_EDIT}>
-                <RowActionItem
-                  onClick={() => {
-                    setMenuEmployeeId(null);
-                    setDrawerMode('edit');
-                    setEditingEmployee(row);
-                    setDrawerOpen(true);
-                  }}
-                >
-                  Edit
-                </RowActionItem>
-              </PermissionGate>
-              <PermissionGate permission={PERMISSIONS.EMPLOYEES_DELETE}>
-                <RowActionItem
-                  destructive
-                  onClick={() => {
-                    setMenuEmployeeId(null);
-                    setPendingDelete(row);
-                  }}
-                >
-                  Delete
-                </RowActionItem>
-              </PermissionGate>
-            </RowActionsMenu>
-          );
-        },
+        width: 84,
+        minWidth: 84,
+        maxWidth: 84,
+        cell: (row) => (
+          <div className="flex items-center justify-end gap-1">
+            <PermissionGate permission={PERMISSIONS.EMPLOYEES_EDIT}>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                title="Edit"
+                aria-label={`Edit ${row.employeeNo}`}
+                onClick={() => {
+                  setDrawerMode('edit');
+                  setEditingEmployee(row);
+                  setDrawerOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.EMPLOYEES_DELETE}>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                title="Delete"
+                aria-label={`Delete ${row.employeeNo}`}
+                className="text-destructive hover:text-destructive"
+                onClick={() => setPendingDelete(row)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </PermissionGate>
+          </div>
+        ),
       },
     ],
-    [menuEmployeeId],
+    [],
   );
 
   const clientOptions = (optionsQuery.data?.clients ?? []).map((client) => ({
@@ -343,7 +338,7 @@ export function EmployeesPage() {
         fullscreenTitle="Employees"
       />
 
-      <EmployeeFormDrawer
+      <EmployeeFormModal
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         mode={drawerMode}

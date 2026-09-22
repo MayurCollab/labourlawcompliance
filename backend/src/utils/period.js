@@ -32,4 +32,15 @@ export const periodMonthAndYear = (period) => {
   };
 };
 
+/**
+ * Format a period string (YYYY-MM) into a short display label, e.g. "Jul-2026".
+ * Used where a period is picked ad hoc (no stored `periodLabel` to read, e.g.
+ * a filing imported from Excel) and a label still needs to be synthesized.
+ */
+export const formatPeriodLabel = (period) => {
+  const { monthName, year } = periodMonthAndYear(period);
+  if (!monthName || !year) return '';
+  return `${monthName.slice(0, 3)}-${year}`;
+};
+
 export { MONTH_NAMES };

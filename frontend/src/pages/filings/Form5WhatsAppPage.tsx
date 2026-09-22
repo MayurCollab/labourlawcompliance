@@ -6,6 +6,8 @@ import { clientsApi } from '@/api/clients.api';
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
 import { PermissionGate } from '@/components/common/PermissionGate';
+import { WhatsAppDraftField } from '@/components/common/WhatsAppDraftField';
+import { confirmDialog } from '@/components/dialogs/ConfirmDialog';
 import { Modal } from '@/components/dialogs/Modal';
 import {
   FilterPanel,
@@ -42,6 +44,7 @@ import { cn } from '@/lib/utils';
 import type { Filing, ListFilingsParams } from '@/types/filing.types';
 import type { WhatsAppCustomValues } from '@/types/whatsappTemplate.types';
 import { collectCustomVariables } from '@/utils/whatsappTemplatePreview';
+import { isValidWhatsAppMobile } from '@/utils/whatsappPhone';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { toastError, toastSuccess } from '@/utils/toast';
 
@@ -72,90 +75,6 @@ type BulkResultEntry = {
   status: BulkRowStatus;
   message: string;
 };
-
-/** Matches MSG91 WhatsApp phone rules: 10-digit mobile, optional 91 / leading zeros. */
-const isValidWhatsAppMobile = (input: string) => {
-  let digits = String(input ?? '').replace(/\D/g, '');
-  if (!digits) return false;
-  digits = digits.replace(/^0+/, '');
-  if (!digits) return false;
-  if (!digits.startsWith('91')) digits = `91${digits}`;
-  return digits.length >= 12;
-};
-
-const fieldHighlightClassName =
-  'border-amber-500 bg-amber-50 ring-2 ring-amber-400/70 placeholder:text-amber-800/80 dark:bg-amber-950/50 dark:placeholder:text-amber-200/70';
-
-type WhatsAppDraftFieldProps = {
-  clientId: string;
-  draftValue: string;
-  placeholder: string;
-  kind?: 'phone' | 'text';
-  disabled?: boolean;
-  onDraftChange: (clientId: string, value: string) => void;
-  onCommit: (clientId: string) => void;
-};
-
-/**
- * Compact local-state input so grid remounts do not steal focus after each character.
- * Empty fields, and invalid mobile numbers, are highlighted so they're easy to
- * spot and fill in — even recipient name, which is optional and defaults to
- * "Dear" server-side, stays highlighted purely as a visual cue, never a block.
- * Values persist on blur / Enter.
- */
-function WhatsAppDraftField({
-  clientId,
-  draftValue,
-  placeholder,
-  kind = 'text',
-  disabled,
-  onDraftChange,
-  onCommit,
-}: WhatsAppDraftFieldProps) {
-  const [value, setValue] = useState(draftValue);
-  const trimmed = value.trim();
-  const missing = !trimmed;
-  const invalidPhone =
-    kind === 'phone' && trimmed.length > 0 && !isValidWhatsAppMobile(trimmed);
-  const highlighted = missing || invalidPhone;
-
-  useEffect(() => {
-    setValue(draftValue);
-  }, [clientId, draftValue]);
-
-  return (
-    <Input
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      title={
-        invalidPhone
-          ? 'This does not look like a valid 10-digit mobile number'
-          : missing
-            ? 'This field is empty'
-            : undefined
-      }
-      onChange={(event) => {
-        const next = event.target.value;
-        setValue(next);
-        onDraftChange(clientId, next);
-      }}
-      onBlur={() => onCommit(clientId)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          (event.target as HTMLInputElement).blur();
-        }
-      }}
-      containerClassName="space-y-0"
-      className={cn(
-        'h-7 w-32 max-w-full px-2 py-0 text-xs',
-        highlighted && fieldHighlightClassName,
-      )}
-      aria-label={placeholder}
-    />
-  );
-}
 
 /**
  * List generated Form 5 PDFs, edit client mobile numbers, and send via MSG91 WhatsApp.
@@ -445,8 +364,8 @@ export function Form5WhatsAppPage() {
         phone,
         recipientName,
         missingPhone: !phone,
-        // Recipient name is optional — the send falls back to "Dear" — so it
-        // never blocks sending, only the mobile number does.
+        // Recipient name is optional — a blank one is just skipped in the
+        // message text — so it never blocks sending, only the mobile number does.
         missingRecipient: !recipientName,
         incomplete: !phone,
       };
@@ -555,6 +474,52 @@ export function Form5WhatsAppPage() {
     () => displayRows.filter((row) => selectedIds.has(row.id)),
     [displayRows, selectedIds],
   );
+
+  /** Selected rows missing a recipient name, or a valid mobile number — used
+   *  for the "Total N, missing recipient name X, missing mobile numbers Y"
+   *  summary in the send preview, and to bring those rows to the top when
+   *  the summary is clicked. */
+  const selectedMissingIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of selectedRows) {
+      const contact = rowContactState(row);
+      const invalidPhone = !contact.phone || !isValidWhatsAppMobile(contact.phone);
+      if (contact.missingRecipient || invalidPhone) ids.add(row.id);
+    }
+    return ids;
+  }, [selectedRows, rowContactState]);
+
+  const missingRecipientCount = useMemo(
+    () =>
+      selectedRows.filter((row) => rowContactState(row).missingRecipient)
+        .length,
+    [selectedRows, rowContactState],
+  );
+
+  const missingPhoneInSelection = useMemo(
+    () =>
+      selectedRows.filter((row) => {
+        const contact = rowContactState(row);
+        return !contact.phone || !isValidWhatsAppMobile(contact.phone);
+      }).length,
+    [selectedRows, rowContactState],
+  );
+
+  /** Toggled by clicking the summary line — brings incomplete rows to the top. */
+  const [sortMissingFirst, setSortMissingFirst] = useState(false);
+
+  useEffect(() => {
+    if (previewOpen) setSortMissingFirst(false);
+  }, [previewOpen]);
+
+  const previewRows = useMemo(() => {
+    if (!sortMissingFirst) return selectedRows;
+    return [...selectedRows].sort((a, b) => {
+      const aMissing = selectedMissingIds.has(a.id) ? 0 : 1;
+      const bMissing = selectedMissingIds.has(b.id) ? 0 : 1;
+      return aMissing - bMissing;
+    });
+  }, [selectedRows, sortMissingFirst, selectedMissingIds]);
 
   const locationOptions = locationOptionsFromClients(
     clientsQuery.data?.clients,
@@ -685,7 +650,7 @@ export function Form5WhatsAppPage() {
                 contact.clientKey,
                 contact.savedName,
               )}
-              placeholder='Defaults to "Dear"'
+              placeholder="Optional — leave blank to skip"
               disabled={!canEditClient}
               onDraftChange={handleRecipientDraftChange}
               onCommit={commitPersist}
@@ -741,7 +706,7 @@ export function Form5WhatsAppPage() {
    * Send (or resend) WhatsApp for one filing, using whatever phone/recipient
    * drafts are currently held for its client. Mobile number is required — a
    * missing or invalid one is skipped without calling the API; recipient
-   * name is optional and the server falls back to "Dear".
+   * name is optional and, left blank, is simply skipped in the message.
    */
   const sendOneFilingWhatsApp = useCallback(
     async (row: Filing): Promise<BulkResultEntry> => {
@@ -885,6 +850,41 @@ export function Form5WhatsAppPage() {
     }
   };
 
+  /**
+   * Warn before sending a batch that has rows missing a recipient name or a
+   * valid mobile number — those with a missing/invalid number are skipped
+   * from the send entirely, and those with no name just go out without one.
+   */
+  const handleSendAllClick = async () => {
+    if (missingRecipientCount > 0 || missingPhoneInSelection > 0) {
+      const parts: string[] = [];
+      if (missingRecipientCount > 0) {
+        parts.push(
+          `${missingRecipientCount} missing a recipient name`,
+        );
+      }
+      if (missingPhoneInSelection > 0) {
+        parts.push(
+          `${missingPhoneInSelection} missing a valid mobile number`,
+        );
+      }
+      const confirmed = await confirmDialog({
+        title: 'Some records are incomplete',
+        message: [
+          `Out of ${selectedRows.length} selected, ${parts.join(' and ')}.`,
+          '',
+          'Rows with no valid mobile number will be skipped — nothing is sent to them.',
+          'Rows missing a recipient name will still be sent, just without a name in the greeting.',
+          '',
+          'Send anyway?',
+        ].join('\n'),
+        confirmLabel: 'Send anyway',
+      });
+      if (!confirmed) return;
+    }
+    await handleBulkSend();
+  };
+
   /** Re-persist whatever's currently drafted for this row's client, then resend. */
   const resendEntry = useCallback(
     async (entry: BulkResultEntry): Promise<BulkResultEntry> => {
@@ -985,7 +985,7 @@ export function Form5WhatsAppPage() {
     <div className="space-y-3">
       <PageHeader
         title="Form 5 WhatsApp"
-        description='Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Mobile number is required; recipient name is optional and greets as "Dear" when left blank. Both are stored on the client master.'
+        description="Send generated Form 5 PDFs on WhatsApp using your approved MSG91 template. Mobile number is required; recipient name is optional and is simply skipped in the message when left blank. Both are stored on the client master."
         breadcrumbs={[
           { label: 'Home', href: PATHS.home },
           { label: 'Form 5', href: PATHS.form5 },
@@ -1112,7 +1112,7 @@ export function Form5WhatsAppPage() {
               page {incompleteCount === 1 ? 'is' : 'are'} missing a valid
               mobile number. Click to show only these records. Highlighted
               fields need to be filled before send — recipient name is
-              optional and greets as &quot;Dear&quot; when left blank.
+              optional and is simply skipped in the message when left blank.
             </>
           )}
         </button>
@@ -1157,7 +1157,7 @@ export function Form5WhatsAppPage() {
         description={
           bulkResults
             ? 'Fix the mobile number and resend, or resend all once they look right.'
-            : 'Pick a template, review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type. Recipient name is optional and greets as "Dear" when left blank.'
+            : 'Pick a template, review recipient names and mobile numbers, then send all selected messages. Empty fields are highlighted and saved as you type. Recipient name is optional and is simply skipped in the message when left blank.'
         }
         className="max-w-5xl"
         closeOnOverlayClick={!bulkSending && !resendingAll}
@@ -1203,7 +1203,7 @@ export function Form5WhatsAppPage() {
                     !hasAllCustomValues(bulkCustomVariables, bulkCustomValues)
                   }
                   loading={bulkSending}
-                  onClick={() => void handleBulkSend()}
+                  onClick={() => void handleSendAllClick()}
                 >
                   Send all ({selectedRows.length})
                 </Button>
@@ -1338,6 +1338,35 @@ export function Form5WhatsAppPage() {
               hint={`This text is sent to all ${selectedRows.length} selected recipient(s) — it is not customised per client.`}
             />
 
+            {missingRecipientCount > 0 || missingPhoneInSelection > 0 ? (
+              <button
+                type="button"
+                aria-pressed={sortMissingFirst}
+                onClick={() => setSortMissingFirst((value) => !value)}
+                className={cn(
+                  'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                  'border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100',
+                  'dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+                  sortMissingFirst && 'ring-2 ring-amber-400/70',
+                )}
+              >
+                Total {selectedRows.length}, missing recipient name{' '}
+                {missingRecipientCount}, missing mobile number
+                {missingPhoneInSelection === 1 ? '' : 's'}{' '}
+                {missingPhoneInSelection}.{' '}
+                {sortMissingFirst
+                  ? 'Showing incomplete records first — click to restore the original order.'
+                  : 'Click to bring incomplete records to the top for easy editing.'}
+              </button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Total {selectedRows.length} record
+                {selectedRows.length === 1 ? '' : 's'} selected — all have a
+                mobile number and recipient name.
+              </p>
+            )}
+
             <div className="max-h-[50vh] overflow-auto">
               <table className="w-full min-w-[48rem] border-collapse text-sm">
                 <thead>
@@ -1351,7 +1380,7 @@ export function Form5WhatsAppPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedRows.map((row) => {
+                  {previewRows.map((row) => {
                     const contact = rowContactState(row);
                     const company =
                       row.client?.companyName || row.clientCode || '—';
@@ -1397,7 +1426,7 @@ export function Form5WhatsAppPage() {
                                 contact.clientKey,
                                 contact.savedName,
                               )}
-                              placeholder='Defaults to "Dear"'
+                              placeholder="Optional — leave blank to skip"
                               disabled={!canEditClient || bulkSending}
                               onDraftChange={handleRecipientDraftChange}
                               onCommit={commitPersist}

@@ -41,6 +41,10 @@ export const findClientsByCodes = (codes) => {
   return Client.find({ clientCode: { $in: list } });
 };
 
+/** Clients touched in a time window — fallback for "recently added" on older imports with no stored client codes. */
+export const findClientCodesUpdatedBetween = (start, end) =>
+  Client.find({ updatedAt: { $gte: start, $lte: end } }).select('clientCode');
+
 /** Clear address + RC fields from Client-Master imports (clients stay). */
 export const clearAddressFields = (actorId) =>
   Client.updateMany(

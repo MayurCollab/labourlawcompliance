@@ -8,6 +8,7 @@ export const PATHS = {
   verifyEmail: '/verify-email',
   /** Authenticated account area */
   changePassword: '/account/change-password',
+  settings: '/account/settings',
   /** Domain modules */
   clients: '/clients',
   uploads: '/uploads',

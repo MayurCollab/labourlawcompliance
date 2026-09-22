@@ -9,6 +9,9 @@ export const WHATSAPP_TEMPLATE_FIELDS = Object.freeze([
     token: '{{RecipientName}}',
     label: 'Recipient name',
     sample: 'Mr. Dipen Shah',
+    // Optional — a send is never blocked on this being empty; the token is
+    // just cleaned out of the message text instead (see resolveWhatsAppMessage).
+    optional: true,
   },
   {
     field: 'companyName',

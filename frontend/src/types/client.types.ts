@@ -15,6 +15,13 @@ export type LocationRef = {
   name: string | null;
 };
 
+/** Client's most recent Form 5 filing status — not a period-specific value. */
+export type ClientLatestFiling = {
+  generateStatus: 'pending' | 'generated' | 'failed';
+  period: string;
+  periodLabel: string | null;
+};
+
 export type Client = {
   id: string;
   clientCode: string;
@@ -31,6 +38,8 @@ export type Client = {
   status: string | null;
   signatoryName: string | null;
   includeEmployeesOnForm5: boolean;
+  /** Only present on list rows — the client's latest Form 5 filing, if any. */
+  latestFiling?: ClientLatestFiling | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -42,6 +51,8 @@ export type ListClientsParams = {
   locationId?: string;
   locationIds?: string[];
   fundCode?: string;
+  generateStatus?: 'pending' | 'generated' | 'failed';
+  recentlyAdded?: boolean;
   sortBy?: 'clientCode' | 'companyName' | 'createdAt' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';
 };
@@ -94,4 +105,20 @@ export type ClientCompanyOption = {
 export type ClientOptionsResult = {
   clients: ClientOption[];
   companies: ClientCompanyOption[];
+};
+
+export type SendClientWhatsAppPayload = {
+  templateId: string;
+  phone?: string;
+  savePhone?: boolean;
+  recipientName?: string;
+  saveRecipientName?: boolean;
+  customValues?: Record<string, string>;
+  /** Required when the chosen template references {{Period}}/month/year fields. */
+  period?: string;
+};
+
+export type SendClientWhatsAppResult = {
+  client: Client;
+  phone: string;
 };

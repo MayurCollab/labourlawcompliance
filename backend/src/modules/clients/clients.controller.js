@@ -57,3 +57,12 @@ export const deleteClient = asyncHandler(async (req, res) => {
   await clientsService.deleteClient(req.params.id, req.user.id);
   return sendSuccess(res, null, CLIENTS_MESSAGES.DELETED);
 });
+
+export const sendClientWhatsApp = asyncHandler(async (req, res) => {
+  const result = await clientsService.sendClientWhatsApp(
+    req.params.id,
+    req.body,
+    req.user.id,
+  );
+  return sendSuccess(res, result, CLIENTS_MESSAGES.WHATSAPP_SENT);
+});

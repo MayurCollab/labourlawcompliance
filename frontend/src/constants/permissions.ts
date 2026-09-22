@@ -18,6 +18,7 @@ export const PERMISSIONS = {
   CLIENTS_CREATE: 'clients.create',
   CLIENTS_EDIT: 'clients.edit',
   CLIENTS_DELETE: 'clients.delete',
+  CLIENTS_SEND: 'clients.send',
   UPLOADS_VIEW: 'uploads.view',
   UPLOADS_CREATE: 'uploads.create',
   UPLOADS_PURGE: 'uploads.purge',

@@ -57,6 +57,10 @@ const ChangePasswordPage = lazyPage(
   () => import('@/pages/auth/ChangePasswordPage'),
   'ChangePasswordPage',
 );
+const SettingsPage = lazyPage(
+  () => import('@/pages/settings/SettingsPage'),
+  'SettingsPage',
+);
 const ComponentsGalleryPage = lazyPage(
   () => import('@/pages/dev/ComponentsGalleryPage'),
   'ComponentsGalleryPage',
@@ -162,6 +166,7 @@ export const router = createBrowserRouter(
               path={PATHS.changePassword}
               element={<ChangePasswordPage />}
             />
+            <Route path={PATHS.settings} element={<SettingsPage />} />
             <Route path={PATHS.forbidden} element={<ForbiddenPage />} />
 
             <Route

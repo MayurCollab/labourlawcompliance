@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  booleanQuerySchema,
   objectIdListSchema,
   objectIdSchema,
   paginationQuerySchema,
@@ -21,6 +22,8 @@ export const listClientsQuerySchema = paginationQuerySchema.extend({
   locationId: objectIdSchema.optional(),
   locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),
+  generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
+  recentlyAdded: booleanQuerySchema,
   sortBy: z.enum(CLIENT_SORTABLE_FIELDS).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -38,6 +41,8 @@ export const exportClientsQuerySchema = z.object({
   locationId: objectIdSchema.optional(),
   locationIds: objectIdListSchema,
   fundCode: z.string().trim().max(32).optional(),
+  generateStatus: z.enum(['pending', 'generated', 'failed']).optional(),
+  recentlyAdded: booleanQuerySchema,
   sortBy: z.enum(CLIENT_SORTABLE_FIELDS).default('clientCode'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
@@ -101,3 +106,29 @@ export const updateClientSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',
   });
+
+/**
+ * Text the operator typed for the template's custom variables, keyed by
+ * placeholder token (or slot index). Empty for templates that only use data fields.
+ */
+const customValuesSchema = z
+  .record(z.string(), z.string().trim().max(1024))
+  .optional();
+
+export const sendClientWhatsAppSchema = z.object({
+  templateId: objectIdSchema,
+  phone: z.string().trim().max(32).optional(),
+  savePhone: z.boolean().optional(),
+  recipientName: z.string().trim().max(120).optional(),
+  saveRecipientName: z.boolean().optional(),
+  customValues: customValuesSchema,
+  /**
+   * Only required when the chosen template references {{Period}}/month/year
+   * fields — this flow has no filing to read a period from otherwise.
+   */
+  period: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM')
+    .optional(),
+});

@@ -25,6 +25,24 @@ const trimTrailingCommaForGenericWrap = (value) => {
 
 const isCustom = (variable) => variable?.type === WHATSAPP_VARIABLE_TYPES.CUSTOM;
 
+/** A field-type variable whose value is allowed to be empty (e.g. recipient name). */
+const isOptionalField = (variable) =>
+  !isCustom(variable) &&
+  WHATSAPP_TEMPLATE_FIELDS.find((item) => item.field === variable.field)?.optional === true;
+
+/**
+ * Removing an empty variable (e.g. a blank recipient name) can leave the
+ * surrounding literal text with an orphan space before punctuation, or a run
+ * of double spaces where the value used to sit — "Hii , Please" instead of
+ * "Hii, Please". Tidy that up after every substitution so a skipped token
+ * never reads as a typo. Only touches spaces/tabs, never line breaks.
+ */
+const cleanupResolvedText = (value) =>
+  value
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    .trim();
+
 /**
  * Map a client + filing period to the values a template variable can pull from.
  * `recipientName` overrides the client's stored name (the send flows let the
@@ -53,6 +71,19 @@ export const buildWhatsAppSourceData = ({
     signatoryName: text(signatoryName ?? client?.signatoryName),
   };
 };
+
+/** Field keys only ever available from a filing period — never from a bare client record. */
+const PERIOD_DEPENDENT_FIELDS = ['month', 'year', 'periodLabel'];
+
+/**
+ * Whether a template references month/year/periodLabel — the fields that
+ * only come from a filing period, never from a client record alone. Used to
+ * decide whether a client-level (no-filing) send needs a period picked first.
+ */
+export const templateUsesPeriodFields = (template) =>
+  (template?.variables || []).some(
+    (variable) => !isCustom(variable) && PERIOD_DEPENDENT_FIELDS.includes(variable.field),
+  );
 
 /** Custom variables on a template, in body order, each with its slot index. */
 export const listCustomVariables = (template) =>
@@ -112,7 +143,7 @@ export const resolveWhatsAppMessage = (template, sourceData, customValues = {}) 
       ? customValueFor(variable, index, customValues)
       : text(sourceData?.[variable.field]);
 
-    if (!value) {
+    if (!value && !isOptionalField(variable)) {
       const label = missingLabelFor(variable);
       if (!missing.includes(label)) missing.push(label);
     }
@@ -133,6 +164,8 @@ export const resolveWhatsAppMessage = (template, sourceData, customValues = {}) 
       previewText = previewText.split(variable.token).join(toWhatsAppBold(value));
     }
   });
+
+  previewText = cleanupResolvedText(previewText);
 
   const bodyValues =
     template.bodyMode === WHATSAPP_BODY_MODES.SINGLE

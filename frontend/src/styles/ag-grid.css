@@ -81,7 +81,7 @@
 
 .llc-ag-grid .ag-row {
   border-bottom: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
-  transition: background-color 140ms ease;
+  transition: background-color 140ms ease, top 220ms ease;
 }
 
 .llc-ag-grid .ag-row-hover {
@@ -90,6 +90,37 @@
 
 .llc-ag-grid .ag-row-selected {
   background-color: var(--ag-selected-row-background-color) !important;
+}
+
+/* Double-click-to-expand affordance — hints the row is interactive without
+   a dedicated chevron column on every table that opts in. */
+.llc-ag-grid--expandable .ag-row:not(.ag-full-width-row) {
+  cursor: pointer;
+}
+
+/* Keeps the owning row visually tied to its open detail panel below it. */
+.llc-ag-grid .ag-row.llc-ag-row-expanded {
+  background-color: color-mix(in oklch, var(--primary) 8%, var(--card)) !important;
+  box-shadow: inset 0 -1px 0 color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+.llc-ag-grid .ag-row.ag-full-width-row {
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+}
+
+@keyframes llc-ag-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.llc-ag-detail-row {
+  animation: llc-ag-detail-in 200ms ease-out;
 }
 
 .llc-ag-grid .ag-cell {

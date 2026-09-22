@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { Button } from '@/components/buttons';
-import { Drawer } from '@/components/dialogs/Drawer';
+import { Modal } from '@/components/dialogs/Modal';
 import { FormWrapper } from '@/components/forms/FormWrapper';
 import { Input } from '@/components/inputs/Input';
 import { Select, type SelectOption } from '@/components/inputs/Select';
@@ -12,7 +12,7 @@ import {
   type EmployeeFormValues,
 } from '@/validations/masters.validation';
 
-type EmployeeFormDrawerProps = {
+type EmployeeFormModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: 'create' | 'edit';
@@ -30,7 +30,7 @@ type EmployeeFormDrawerProps = {
   ) => void;
 };
 
-export function EmployeeFormDrawer({
+export function EmployeeFormModal({
   open,
   onOpenChange,
   mode,
@@ -38,9 +38,9 @@ export function EmployeeFormDrawer({
   clientOptions,
   loading = false,
   onSubmit,
-}: EmployeeFormDrawerProps) {
+}: EmployeeFormModalProps) {
   return (
-    <Drawer
+    <Modal
       open={open}
       onOpenChange={onOpenChange}
       title={mode === 'create' ? 'Add employee' : 'Edit employee'}
@@ -49,6 +49,7 @@ export function EmployeeFormDrawer({
           ? 'Employees are normally added from salary workbook uploads. Use this only if you must add one row by hand. Entering an Employee No, Client and Period that already exists loads that row for editing.'
           : 'Edit this employee-month row. P.Tax is recomputed from PT GROSS using the active slabs.'
       }
+      className="max-w-xl"
     >
       {open ? (
         <EmployeeFormBody
@@ -61,7 +62,7 @@ export function EmployeeFormDrawer({
           onSubmit={onSubmit}
         />
       ) : null}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -167,80 +168,86 @@ function EmployeeFormBody({
         return (
           <>
             {isMatchCurrent && matchedEmployee ? (
-              <div className="rounded-md border border-amber-500/40 bg-amber-100 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+              <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-100 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950 dark:text-amber-100">
                 Loaded existing row for{' '}
                 <strong>{matchedEmployee.employeeNo}</strong> (
                 {matchedEmployee.period}). Saving will update this row.
               </div>
             ) : null}
-            <Select
-              label="Client"
-              placeholder="Select a client…"
-              options={clientOptions}
-              {...clientField}
-              onChange={(event) => {
-                clientField.onChange(event);
-                void attemptLookup(
-                  event.target.value,
-                  form.getValues('employeeNo'),
-                  form.getValues('period'),
-                );
-              }}
-              error={form.formState.errors.clientId?.message}
-            />
-            <Input
-              label="Period"
-              type="month"
-              hint="Salary month this row belongs to."
-              {...periodField}
-              onChange={(event) => {
-                periodField.onChange(event);
-                void attemptLookup(
-                  form.getValues('clientId'),
-                  form.getValues('employeeNo'),
-                  event.target.value,
-                );
-              }}
-              error={form.formState.errors.period?.message}
-            />
-            <Input
-              label="Employee No"
-              hint={
-                mode === 'create'
-                  ? 'Type an existing Employee No (for this client and period) to load and edit that row.'
-                  : undefined
-              }
-              {...employeeNoField}
-              onBlur={(event) => {
-                employeeNoField.onBlur(event);
-                void attemptLookup(
-                  form.getValues('clientId'),
-                  event.target.value,
-                  form.getValues('period'),
-                );
-              }}
-              error={form.formState.errors.employeeNo?.message}
-            />
-            <Input
-              label="Employee name"
-              {...form.register('employeeName')}
-              error={form.formState.errors.employeeName?.message}
-            />
-            <Input
-              label="PT GROSS"
-              type="number"
-              min={0}
-              step="0.01"
-              hint="Leave blank for the default ₹200 P.Tax. P.Tax is computed automatically from the active slabs."
-              {...form.register('ptGross')}
-              error={form.formState.errors.ptGross?.message}
-            />
-            <Input
-              label="State"
-              {...form.register('state')}
-              error={form.formState.errors.state?.message}
-            />
-            <div className="flex justify-end gap-2 pt-2">
+
+            <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
+              <Select
+                label="Client"
+                placeholder="Select a client…"
+                options={clientOptions}
+                {...clientField}
+                onChange={(event) => {
+                  clientField.onChange(event);
+                  void attemptLookup(
+                    event.target.value,
+                    form.getValues('employeeNo'),
+                    form.getValues('period'),
+                  );
+                }}
+                error={form.formState.errors.clientId?.message}
+              />
+              <Input
+                label="Period"
+                type="month"
+                hint="Salary month this row belongs to."
+                {...periodField}
+                onChange={(event) => {
+                  periodField.onChange(event);
+                  void attemptLookup(
+                    form.getValues('clientId'),
+                    form.getValues('employeeNo'),
+                    event.target.value,
+                  );
+                }}
+                error={form.formState.errors.period?.message}
+              />
+
+              <Input
+                label="Employee No"
+                hint={
+                  mode === 'create'
+                    ? 'Type an existing Employee No (for this client and period) to load and edit that row.'
+                    : undefined
+                }
+                {...employeeNoField}
+                onBlur={(event) => {
+                  employeeNoField.onBlur(event);
+                  void attemptLookup(
+                    form.getValues('clientId'),
+                    event.target.value,
+                    form.getValues('period'),
+                  );
+                }}
+                error={form.formState.errors.employeeNo?.message}
+              />
+              <Input
+                label="Employee name"
+                {...form.register('employeeName')}
+                error={form.formState.errors.employeeName?.message}
+              />
+
+              <Input
+                label="PT GROSS"
+                type="number"
+                min={0}
+                step="0.01"
+                hint="Leave blank for the default ₹200 P.Tax."
+                {...form.register('ptGross')}
+                error={form.formState.errors.ptGross?.message}
+              />
+              <Input
+                label="State"
+                {...form.register('state')}
+                error={form.formState.errors.state?.message}
+              />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
               <Button
                 type="button"
                 variant="outline"

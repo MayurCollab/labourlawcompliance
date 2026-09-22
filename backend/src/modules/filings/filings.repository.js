@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import Filing from './filing.model.js';
 
 const CLIENT_POPULATE = {
@@ -49,6 +51,36 @@ export const saveFiling = (filing, session = null) =>
 
 export const bulkWriteFilings = (ops, options = {}) =>
   Filing.bulkWrite(ops, { ordered: false, ...options });
+
+/**
+ * Each client's most recent filing (by period) with just its generateStatus —
+ * used by the Clients page's Pending/Generated/Failed filter and status badge,
+ * which reflect the client's latest Form 5 rather than any one period.
+ * Scoped to `clientIds` when given, otherwise covers every client with at
+ * least one filing. `aggregate` bypasses the soft-delete query middleware, so
+ * `isDeleted` is matched explicitly here (see auditPlugin.js).
+ */
+export const findLatestFilingStatusByClientIds = (clientIds) => {
+  const match = { isDeleted: { $ne: true }, client: { $ne: null } };
+  if (clientIds) {
+    const ids = [...new Set((clientIds || []).filter(Boolean).map(String))];
+    if (!ids.length) return Promise.resolve([]);
+    match.client = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+  }
+
+  return Filing.aggregate([
+    { $match: match },
+    { $sort: { period: -1 } },
+    {
+      $group: {
+        _id: '$client',
+        generateStatus: { $first: '$generateStatus' },
+        period: { $first: '$period' },
+        periodLabel: { $first: '$periodLabel' },
+      },
+    },
+  ]);
+};
 
 export const softDeleteAllFilings = (actorId) =>
   Filing.updateMany(

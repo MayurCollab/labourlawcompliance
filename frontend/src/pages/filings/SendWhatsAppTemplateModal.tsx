@@ -32,6 +32,10 @@ type SendWhatsAppTemplateModalProps = {
   filing: Filing;
   /** Called after a successful send, so the page can refresh its contact drafts. */
   onSent?: () => void;
+  /** Pre-selects a template (e.g. handed off from the Clients page, where the
+   *  template was already chosen before this modal opened) instead of making
+   *  the user pick it again. */
+  initialTemplateId?: string;
 };
 
 /**
@@ -44,8 +48,9 @@ export function SendWhatsAppTemplateModal({
   onOpenChange,
   filing,
   onSent,
+  initialTemplateId,
 }: SendWhatsAppTemplateModalProps) {
-  const [templateId, setTemplateId] = useState('');
+  const [templateId, setTemplateId] = useState(initialTemplateId ?? '');
   const [phone, setPhone] = useState(filing.client?.contactNumber ?? '');
   const [savePhone, setSavePhone] = useState(true);
   const [recipientName, setRecipientName] = useState(
@@ -117,8 +122,8 @@ export function SendWhatsAppTemplateModal({
       ? wrapWithGenericTemplate(composedPreviewText, genericTemplate)
       : composedPreviewText;
 
-  // Validation — recipient name is optional; it falls back to a generic
-  // "Dear" greeting server-side when left blank.
+  // Validation — recipient name is optional; when left blank the greeting
+  // is skipped in the message rather than blocking the send.
   const phoneValid = phone.trim().length > 0;
   const customValid = hasAllCustomValues(customVariables, customValues);
   const canSend = Boolean(templateId) && phoneValid && customValid;
@@ -149,13 +154,14 @@ export function SendWhatsAppTemplateModal({
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setTemplateId('');
+      setTemplateId(initialTemplateId ?? '');
       setPhone(filing.client?.contactNumber ?? '');
       setRecipientName(filing.client?.recipientName ?? '');
       setSavePhone(true);
       setSaveRecipientName(true);
       setCustomValues({});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, filing]);
 
   // Text typed for one template should not leak into another.
@@ -229,7 +235,8 @@ export function SendWhatsAppTemplateModal({
                   placeholder="Mr. Dipen Shah"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional — greets as &quot;Dear&quot; when left blank.
+                  Optional — the greeting is skipped in the message when left
+                  blank.
                 </p>
                 <Checkbox
                   checked={saveRecipientName}
