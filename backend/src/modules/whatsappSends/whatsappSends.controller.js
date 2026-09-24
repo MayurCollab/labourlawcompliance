@@ -32,6 +32,30 @@ export const deleteWhatsAppSend = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/v1/whatsapp-sends/failure-summary
+ */
+export const getWhatsAppFailureSummary = asyncHandler(async (req, res) => {
+  const result = await whatsappSendsService.getWhatsAppFailureSummary(req.query);
+  return sendSuccess(res, result, WHATSAPP_SENDS_MESSAGES.FAILURE_SUMMARY_FETCHED);
+});
+
+/**
+ * GET /api/v1/whatsapp-sends/suppressions
+ */
+export const listSuppressedContacts = asyncHandler(async (req, res) => {
+  const result = await whatsappSendsService.listSuppressedContacts(req.query);
+  return sendSuccess(res, result, WHATSAPP_SENDS_MESSAGES.SUPPRESSIONS_FETCHED);
+});
+
+/**
+ * DELETE /api/v1/whatsapp-sends/suppressions/:id
+ */
+export const removeSuppression = asyncHandler(async (req, res) => {
+  await whatsappSendsService.removeSuppression(req.params.id);
+  return sendSuccess(res, null, WHATSAPP_SENDS_MESSAGES.SUPPRESSION_REMOVED);
+});
+
+/**
  * POST /api/webhooks/whatsapp/status
  * Also available at POST /api/v1/whatsapp-sends/webhooks/msg91
  * Public MSG91 outbound delivery callback (sent / delivered / read / failed).

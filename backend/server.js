@@ -7,6 +7,10 @@ import {
   startEmailWorker,
   stopEmailWorker,
 } from './src/email/emailQueue.js';
+import {
+  startWhatsAppRetryScheduler,
+  stopWhatsAppRetryScheduler,
+} from './src/modules/whatsappSends/whatsappRetryScheduler.js';
 import logger from './src/utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -17,6 +21,7 @@ const start = async () => {
   const { default: app } = await import('./src/app.js');
 
   startEmailWorker();
+  if (!config.isTest) startWhatsAppRetryScheduler();
 
   const server = app.listen(config.port, config.host, () => {
     const storageNote =
@@ -35,6 +40,7 @@ const start = async () => {
 
     server.close(async () => {
       try {
+        stopWhatsAppRetryScheduler();
         await stopEmailWorker();
         await disconnectDB();
         logger.info('HTTP server and MongoDB closed. Bye.');

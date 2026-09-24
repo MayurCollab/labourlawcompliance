@@ -1,4 +1,7 @@
+import mongoose from 'mongoose';
+
 import WhatsAppSend from './whatsappSend.model.js';
+import WhatsAppWebhookEvent from './whatsappWebhookEvent.model.js';
 
 const CLIENT_POPULATE = {
   path: 'client',
@@ -96,3 +99,69 @@ export const findOpenWhatsAppSendsSince = (since, limit = 500) =>
     .lean();
 
 export const deleteWhatsAppSendById = (id) => WhatsAppSend.findByIdAndDelete(id);
+
+/**
+ * Records a webhook event as processed. Returns true the first time a given
+ * (providerMessageId, eventName) pair is seen, false on every duplicate —
+ * the unique index makes this an atomic, race-safe dedupe check.
+ */
+export const recordWebhookEventOnce = async (providerMessageId, eventName) => {
+  try {
+    await WhatsAppWebhookEvent.create({ providerMessageId, eventName });
+    return true;
+  } catch (err) {
+    if (err?.code === 11000) return false;
+    throw err;
+  }
+};
+
+/**
+ * Most recent marketing send to this phone, for the pre-send pacing/cooldown
+ * check. Utility (Form 5 reminder) sends don't count towards Meta's
+ * marketing limits, so they're left out.
+ */
+export const findMostRecentMarketingSendToPhone = (phone, marketingBodyMode) =>
+  WhatsAppSend.findOne({ phone, 'templateSnapshot.bodyMode': marketingBodyMode })
+    .sort({ sentAt: -1 })
+    .select('sentAt')
+    .lean();
+
+/** Sends currently due for a scheduled auto-retry. */
+export const findDueRetries = (limit = 50) =>
+  WhatsAppSend.find({
+    retryState: 'scheduled',
+    nextRetryAt: { $lte: new Date() },
+  })
+    .sort({ nextRetryAt: 1 })
+    .limit(limit);
+
+/** Aggregate pipelines don't auto-cast query values like find() does — cast `client` ObjectId refs by hand. */
+const castObjectId = (value) => {
+  try {
+    return new mongoose.Types.ObjectId(String(value));
+  } catch {
+    return value;
+  }
+};
+
+/** Failure-code volume breakdown for the observability view, same filter shape as listWhatsAppSends. */
+export const aggregateFailuresByCategory = (filter = {}, since) => {
+  const match = { ...filter, status: 'failed' };
+  if (match.client) {
+    match.client = Array.isArray(match.client?.$in)
+      ? { $in: match.client.$in.map(castObjectId) }
+      : castObjectId(match.client);
+  }
+  if (since) match.failedAt = { $gte: since };
+  return WhatsAppSend.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: { $ifNull: ['$failureCategory', 'other'] },
+        count: { $sum: 1 },
+        lastSeenAt: { $max: '$failedAt' },
+      },
+    },
+    { $sort: { count: -1 } },
+  ]);
+};

@@ -68,6 +68,7 @@ export const ACTIVITY_ACTIONS = Object.freeze({
   WHATSAPP_TEMPLATE_SOFT_DELETE: 'whatsappTemplates.soft_delete',
   WHATSAPP_SEND_DELETE: 'whatsappSends.delete',
   WHATSAPP_SEND_REFRESH: 'whatsappSends.refresh_status',
+  WHATSAPP_SUPPRESSION_REMOVE: 'whatsappSends.suppression_remove',
 
   TEMPLATE_CREATE: 'templates.create',
   TEMPLATE_UPDATE: 'templates.update',

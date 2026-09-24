@@ -77,6 +77,7 @@ export const findLatestFilingStatusByClientIds = (clientIds) => {
         generateStatus: { $first: '$generateStatus' },
         period: { $first: '$period' },
         periodLabel: { $first: '$periodLabel' },
+        ptAmount: { $first: '$ptAmount' },
       },
     },
   ]);

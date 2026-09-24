@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { whatsappSendsApi } from '@/api/whatsappSends.api';
-import type { ListWhatsAppSendsParams } from '@/types/whatsappSend.types';
+import type {
+  ListWhatsAppSendsParams,
+  WhatsAppFailureSummaryParams,
+} from '@/types/whatsappSend.types';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { toastError, toastSuccess } from '@/utils/toast';
 
@@ -9,6 +12,10 @@ export const whatsappSendsQueryKeys = {
   all: ['whatsapp-sends'] as const,
   list: (params: ListWhatsAppSendsParams) =>
     ['whatsapp-sends', 'list', params] as const,
+  failureSummary: (params: WhatsAppFailureSummaryParams) =>
+    ['whatsapp-sends', 'failure-summary', params] as const,
+  suppressions: (page: number, limit: number) =>
+    ['whatsapp-sends', 'suppressions', page, limit] as const,
 };
 
 export const useWhatsAppSendsQuery = (
@@ -48,6 +55,39 @@ export const useRefreshWhatsAppSendsMutation = () => {
       void queryClient.invalidateQueries({
         queryKey: whatsappSendsQueryKeys.all,
       });
+    },
+  });
+};
+
+export const useWhatsAppFailureSummaryQuery = (
+  params: WhatsAppFailureSummaryParams,
+) =>
+  useQuery({
+    queryKey: whatsappSendsQueryKeys.failureSummary(params),
+    queryFn: () => whatsappSendsApi.failureSummary(params),
+    staleTime: 15_000,
+  });
+
+export const useWhatsAppSuppressionsQuery = (page: number, limit = 20) =>
+  useQuery({
+    queryKey: whatsappSendsQueryKeys.suppressions(page, limit),
+    queryFn: () => whatsappSendsApi.listSuppressions(page, limit),
+    staleTime: 15_000,
+  });
+
+export const useRemoveWhatsAppSuppressionMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['whatsapp-sends', 'suppressions', 'remove'],
+    mutationFn: (id: string) => whatsappSendsApi.removeSuppression(id),
+    onSuccess: () => {
+      toastSuccess('Contact removed from the suppression list');
+      void queryClient.invalidateQueries({
+        queryKey: ['whatsapp-sends', 'suppressions'],
+      });
+    },
+    onError: (error) => {
+      toastError(getApiErrorMessage(error, 'Could not remove contact from suppression list'));
     },
   });
 };

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronRight,
   Download,
@@ -83,6 +84,9 @@ const generateStatusBadge = (
   }
   return <span className="text-muted-foreground">—</span>;
 };
+
+const formatPtAmount = (value: number | null | undefined) =>
+  value === null || value === undefined ? '—' : value.toLocaleString('en-IN');
 
 const emptyToNull = (value?: string) => {
   const trimmed = value?.trim();
@@ -321,6 +325,17 @@ export function ClientsPage() {
       cell: (row) => generateStatusBadge(row.latestFiling?.generateStatus),
     },
     {
+      id: 'ptAmount',
+      header: 'P.Tax Amount',
+      width: 120,
+      minWidth: 110,
+      cell: (row) => (
+        <span className="tabular-nums">
+          {formatPtAmount(row.latestFiling?.ptAmount)}
+        </span>
+      ),
+    },
+    {
       id: 'whatsapp',
       header: '',
       className: 'text-right',
@@ -550,32 +565,43 @@ export function ClientsPage() {
         }
       />
 
-      {selectedIds.size > 0 ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            {selectedIds.size} selected.
-          </p>
-          <PermissionGate permission={PERMISSIONS.CLIENTS_SEND}>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              leftIcon={<MessageCircle className="size-4" />}
-              onClick={() => setPreviewOpen(true)}
-            >
-              Preview ({selectedIds.size})
-            </Button>
-          </PermissionGate>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setSelectedIds(new Set())}
+      <AnimatePresence initial={false}>
+        {selectedIds.size > 0 ? (
+          <motion.div
+            key="selection-toolbar"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="shrink-0 overflow-hidden"
           >
-            Clear selection
-          </Button>
-        </div>
-      ) : null}
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <p className="text-sm text-muted-foreground">
+                {selectedIds.size} selected.
+              </p>
+              <PermissionGate permission={PERMISSIONS.CLIENTS_SEND}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  leftIcon={<MessageCircle className="size-4" />}
+                  onClick={() => setPreviewOpen(true)}
+                >
+                  Preview ({selectedIds.size})
+                </Button>
+              </PermissionGate>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear selection
+              </Button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <div className="min-h-0 flex-1">
         <DataTable

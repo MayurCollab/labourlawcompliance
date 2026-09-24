@@ -32,10 +32,21 @@ export function Modal({
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Callers frequently pass an inline onOpenChange (new function identity on
+  // every render of the caller). Reading it through a ref keeps this effect's
+  // deps down to [open] alone, so it runs once per open/close transition —
+  // not on every keystroke-triggered re-render of whatever renders the
+  // Modal, which would otherwise re-run panelRef.current?.focus() below and
+  // steal focus back from an input the user is actively typing in.
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange(false);
+      if (event.key === 'Escape') onOpenChangeRef.current(false);
     };
     document.addEventListener('keydown', onKeyDown);
     const previousOverflow = document.body.style.overflow;
@@ -46,7 +57,8 @@ export function Modal({
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, onOpenChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (typeof document === 'undefined') return null;
 

@@ -1,5 +1,6 @@
 import config from '../../config/index.js';
 import { fetchWhatsAppOutboundLogs } from '../../integrations/msg91/whatsapp.js';
+import { normalizeWhatsAppPhone } from '../../integrations/msg91/phone.js';
 import AppError from '../../utils/AppError.js';
 import logger from '../../utils/logger.js';
 import { getRequestContext } from '../../utils/requestContext.js';
@@ -9,13 +10,21 @@ import {
 } from '../activity/activity.constants.js';
 import { recordActivity } from '../activity/activity.service.js';
 import * as clientsRepository from '../clients/clients.repository.js';
+import { WHATSAPP_BODY_MODES } from '../whatsappTemplates/whatsappTemplates.constants.js';
 import {
   WHATSAPP_SEND_STATUSES,
   WHATSAPP_SEND_STATUS_RANK,
   WHATSAPP_SENDS_CODES,
 } from './whatsappSends.constants.js';
+import {
+  classifyFailureText,
+  nextRetryDelayMs,
+  userFacingErrorMessage,
+  WHATSAPP_FAILURE_CATEGORIES,
+} from './whatsappFailureCodes.js';
 import { toWhatsAppSendDto, toWhatsAppSendListDto } from './whatsappSends.dto.js';
 import * as whatsappSendsRepository from './whatsappSends.repository.js';
+import * as whatsappSuppressionRepository from './whatsappSuppression.repository.js';
 import { escapeRegex, exactMatchRegex, splitSearchTokens } from '../../utils/searchTokens.js';
 
 const pickFirstString = (...candidates) => {
@@ -167,6 +176,11 @@ export const recordWhatsAppSend = async (input) => {
       input.providerResponse,
     );
 
+    const isFailed = input.status === WHATSAPP_SEND_STATUSES.FAILED;
+    const { code: failureCode, category: failureCategory } = isFailed
+      ? classifyFailureText(input.errorMessage)
+      : { code: null, category: null };
+
     const doc = {
       filing: input.filingId ?? null,
       client: input.clientId ?? null,
@@ -184,26 +198,47 @@ export const recordWhatsAppSend = async (input) => {
         null,
       whatsappTemplate: input.whatsappTemplateId ?? null,
       templateSnapshot: input.templateSnapshot ?? null,
+      bodyValues: Array.isArray(input.bodyValues) ? input.bodyValues : null,
       status: input.status || WHATSAPP_SEND_STATUSES.ACCEPTED,
       requestId: input.requestId ?? requestId,
       providerMessageId: input.providerMessageId ?? providerMessageId,
       errorMessage: input.errorMessage
         ? String(input.errorMessage).slice(0, 500)
         : null,
+      failureCode,
+      failureCategory,
       providerResponse: summarizeProviderResponse(input.providerResponse),
       sentAt: input.sentAt || new Date(),
       deliveredAt: input.deliveredAt ?? null,
       readAt: input.readAt ?? null,
-      failedAt:
-        input.status === WHATSAPP_SEND_STATUSES.FAILED
-          ? input.failedAt || new Date()
-          : null,
+      failedAt: isFailed ? input.failedAt || new Date() : null,
       statusUpdatedAt: new Date(),
       actorId: input.actorId ?? ctx.userId ?? null,
       actorEmail: input.actorEmail ?? ctx.userEmail ?? null,
     };
 
-    await whatsappSendsRepository.createWhatsAppSend(doc);
+    if (isFailed && failureCategory === WHATSAPP_FAILURE_CATEGORIES.PERMANENT_OPT_OUT) {
+      doc.retryState = 'suppressed';
+    } else if (isFailed) {
+      const delayMs = nextRetryDelayMs(failureCategory, 0);
+      if (delayMs != null) {
+        doc.retryState = 'scheduled';
+        doc.nextRetryAt = new Date(doc.failedAt.getTime() + delayMs);
+      } else {
+        doc.retryState = 'exhausted';
+      }
+    }
+
+    const created = await whatsappSendsRepository.createWhatsAppSend(doc);
+
+    if (isFailed && failureCategory === WHATSAPP_FAILURE_CATEGORIES.PERMANENT_OPT_OUT) {
+      await whatsappSuppressionRepository.upsertSuppression({
+        phone: input.phone,
+        reason: 'opted_out',
+        sourceSendId: created._id,
+        failureCode,
+      });
+    }
   } catch (err) {
     logger.error(
       `[whatsappSends] Failed to record send: ${err.message}`,
@@ -211,41 +246,87 @@ export const recordWhatsAppSend = async (input) => {
   }
 };
 
-export const listWhatsAppSends = async (query) => {
-  const {
-    page,
-    limit,
-    search,
-    period,
-    clientId,
-    clientIds,
-    locationId,
-    locationIds,
-    status,
-    phone,
-    sortBy,
-    sortOrder,
-  } = query;
+const sendCooldownMs = () =>
+  (Number(config.msg91.sendCooldownHours) || 24) * 60 * 60 * 1000;
 
-  const filter = {};
+/**
+ * True if sending `template` to `phone` is blocked by the permanent WhatsApp
+ * suppression list (131050 opt-outs, or manual). 131050 is an opt-out from
+ * marketing only — utility templates (the Form 5 reminder) still reach the
+ * contact, so they're never blocked here.
+ */
+export const isRecipientSuppressed = async (phone, template) => {
+  if (!isMarketingTemplate(template)) return false;
+  const digits = normalizeWhatsAppPhone(phone);
+  if (!digits) return false;
+  const suppression = await whatsappSuppressionRepository.findSuppressionByPhone(digits);
+  return Boolean(suppression);
+};
 
-  if (search) {
-    const tokens = splitSearchTokens(search);
-    // Pasted list (e.g. client codes or company names copied from Excel) —
-    // exact match per field, checked across every searchable field.
-    const regex =
-      tokens.length > 1
-        ? exactMatchRegex(tokens)
-        : { $regex: escapeRegex(search), $options: 'i' };
-    filter.$or = [
-      { phone: regex },
-      { clientCode: regex },
-      { companyName: regex },
-      { filename: regex },
-      { requestId: regex },
-      { providerMessageId: regex },
-    ];
+/** Throwing counterpart of isRecipientSuppressed. Call before any single-recipient send. */
+export const assertRecipientNotSuppressed = async (phone, template) => {
+  if (await isRecipientSuppressed(phone, template)) {
+    throw new AppError(
+      'This contact has opted out of WhatsApp messages and cannot be sent to.',
+      422,
+      { code: WHATSAPP_SENDS_CODES.RECIPIENT_SUPPRESSED },
+    );
   }
+};
+
+/**
+ * Only marketing templates are paced. Meta's per-recipient limits
+ * (131049/131056/130429) apply to marketing sends; the fixed Form 5 reminder
+ * is approved as a utility template and may go to the same number freely.
+ * Every 'single' (message-only) template is a marketing template, the
+ * 'positional' Form 5 reminder is the utility one.
+ */
+export const isMarketingTemplate = (template) =>
+  template?.bodyMode === WHATSAPP_BODY_MODES.SINGLE;
+
+/**
+ * True if sending `template` to `phone` now would repeat a marketing send
+ * inside the pacing cooldown window — the repeated-send-to-one-recipient
+ * pattern that triggers 131049/131056/130429. Utility templates are never
+ * held back, and earlier utility sends don't count towards the window.
+ * Pass `force: true` for the retry scheduler's own resends, which are the
+ * intentional exception to this check.
+ */
+export const isRecipientInSendCooldown = async (
+  phone,
+  { template, force = false } = {},
+) => {
+  if (force || !isMarketingTemplate(template)) return false;
+  const digits = normalizeWhatsAppPhone(phone);
+  if (!digits) return false;
+  const recent = await whatsappSendsRepository.findMostRecentMarketingSendToPhone(
+    digits,
+    WHATSAPP_BODY_MODES.SINGLE,
+  );
+  if (!recent?.sentAt) return false;
+  return Date.now() - new Date(recent.sentAt).getTime() < sendCooldownMs();
+};
+
+/** Throwing counterpart of isRecipientInSendCooldown, for single-recipient send paths. */
+export const assertRecipientNotInCooldown = async (phone, template) => {
+  if (await isRecipientInSendCooldown(phone, { template })) {
+    throw new AppError(
+      "A WhatsApp message was already sent to this contact recently. Please wait before sending again to protect delivery health.",
+      429,
+      { code: WHATSAPP_SENDS_CODES.RECENTLY_SENT },
+    );
+  }
+};
+
+/** Period/client/location scoping shared by the sends list and the failure summary. */
+const buildScopeFilter = async ({
+  period,
+  clientId,
+  clientIds,
+  locationId,
+  locationIds,
+}) => {
+  const filter = {};
 
   if (period) filter.period = period;
 
@@ -277,6 +358,51 @@ export const listWhatsAppSends = async (query) => {
     filter.client = clients[0];
   } else if (clients.length > 1) {
     filter.client = { $in: clients };
+  }
+
+  return filter;
+};
+
+export const listWhatsAppSends = async (query) => {
+  const {
+    page,
+    limit,
+    search,
+    period,
+    clientId,
+    clientIds,
+    locationId,
+    locationIds,
+    status,
+    phone,
+    sortBy,
+    sortOrder,
+  } = query;
+
+  const filter = await buildScopeFilter({
+    period,
+    clientId,
+    clientIds,
+    locationId,
+    locationIds,
+  });
+
+  if (search) {
+    const tokens = splitSearchTokens(search);
+    // Pasted list (e.g. client codes or company names copied from Excel) —
+    // exact match per field, checked across every searchable field.
+    const regex =
+      tokens.length > 1
+        ? exactMatchRegex(tokens)
+        : { $regex: escapeRegex(search), $options: 'i' };
+    filter.$or = [
+      { phone: regex },
+      { clientCode: regex },
+      { companyName: regex },
+      { filename: regex },
+      { requestId: regex },
+      { providerMessageId: regex },
+    ];
   }
 
   if (status) filter.status = status;
@@ -341,6 +467,20 @@ export const applyWhatsAppStatusWebhook = async (rawBody, options = {}) => {
       body.recipient,
     ),
   );
+
+  // MSG91 documents duplicate webhook deliveries for the same WAMID as
+  // expected behavior — dedupe by (providerMessageId, eventName) before any
+  // status change or retry is triggered. Payloads without a providerMessageId
+  // (older/legacy shapes) skip dedup rather than being silently dropped.
+  if (providerMessageId && eventName) {
+    const isNewEvent = await whatsappSendsRepository.recordWebhookEventOnce(
+      providerMessageId,
+      eventName,
+    );
+    if (!isNewEvent) {
+      return { matched: true, changed: false, deduped: true };
+    }
+  }
 
   const send = await whatsappSendsRepository.findWhatsAppSendForWebhook({
     requestId,
@@ -409,6 +549,30 @@ export const applyWhatsAppStatusWebhook = async (rawBody, options = {}) => {
       );
       if (errorMessage) {
         send.errorMessage = errorMessage.slice(0, 500);
+      }
+
+      const { code, category } = classifyFailureText(send.errorMessage);
+      send.failureCode = code;
+      send.failureCategory = category;
+
+      if (category === WHATSAPP_FAILURE_CATEGORIES.PERMANENT_OPT_OUT) {
+        await whatsappSuppressionRepository.upsertSuppression({
+          phone: send.phone,
+          reason: 'opted_out',
+          sourceSendId: send._id,
+          failureCode: code,
+        });
+        send.retryState = 'suppressed';
+        send.nextRetryAt = null;
+      } else {
+        const delayMs = nextRetryDelayMs(category, send.retryCount || 0);
+        if (delayMs != null) {
+          send.retryState = 'scheduled';
+          send.nextRetryAt = new Date(eventAt.getTime() + delayMs);
+        } else {
+          send.retryState = 'exhausted';
+          send.nextRetryAt = null;
+        }
       }
     }
   }
@@ -490,6 +654,92 @@ export const deleteWhatsAppSend = async (id) => {
       status: send.status,
     },
   });
+};
+
+/**
+ * Failure-code volume breakdown for the admin observability view — a spike
+ * in quality_throttle (131048) needs a very different response than routine
+ * long_backoff_retry (131049) or permanent_opt_out (131050) occurrences.
+ */
+export const getWhatsAppFailureSummary = async (query = {}) => {
+  const { period, clientId, clientIds, locationId, locationIds, sinceDays } = query;
+
+  const filter = await buildScopeFilter({
+    period,
+    clientId,
+    clientIds,
+    locationId,
+    locationIds,
+  });
+
+  let since = null;
+  if (sinceDays) {
+    since = new Date();
+    since.setDate(since.getDate() - Number(sinceDays));
+  }
+
+  const rows = await whatsappSendsRepository.aggregateFailuresByCategory(filter, since);
+  return rows.map((row) => ({
+    category: row._id || WHATSAPP_FAILURE_CATEGORIES.OTHER,
+    count: row.count,
+    lastSeenAt: row.lastSeenAt || null,
+  }));
+};
+
+export const listSuppressedContacts = async ({ page, limit } = {}) => {
+  const page_ = Math.max(1, Number(page) || 1);
+  const limit_ = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (page_ - 1) * limit_;
+  const [rows, total] = await Promise.all([
+    whatsappSuppressionRepository.listSuppressions({ skip, limit: limit_ }),
+    whatsappSuppressionRepository.countSuppressions(),
+  ]);
+
+  return {
+    suppressions: rows.map((row) => ({
+      id: String(row._id),
+      phone: row.phone,
+      reason: row.reason,
+      failureCode: row.failureCode,
+      notes: row.notes,
+      suppressedAt: row.suppressedAt,
+    })),
+    pagination: {
+      page: page_,
+      limit: limit_,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit_)),
+    },
+  };
+};
+
+export const removeSuppression = async (id) => {
+  const deleted = await whatsappSuppressionRepository.deleteSuppressionById(id);
+  if (!deleted) {
+    throw new AppError('Suppressed contact not found.', 404, {
+      code: WHATSAPP_SENDS_CODES.SUPPRESSION_NOT_FOUND,
+    });
+  }
+
+  await recordActivity({
+    action: ACTIVITY_ACTIONS.WHATSAPP_SUPPRESSION_REMOVE,
+    entityType: ENTITY_TYPES.WHATSAPP_SEND,
+    entityId: id,
+    changes: { phone: deleted.phone, reason: deleted.reason },
+  });
+};
+
+/**
+ * Classifies a caught send-time error for the 3 synchronous send call sites.
+ * `userMessage` is null when the error isn't a recognized MSG91
+ * delivery-restriction code — callers keep their own generic fallback then.
+ */
+export const classifySendError = (error) => {
+  const raw = error?.message || null;
+  const code = raw ? classifyFailureText(raw).code : null;
+  if (!code) return { raw, code: null, category: null, userMessage: null };
+  const { category } = classifyFailureText(raw);
+  return { raw, code, category, userMessage: userFacingErrorMessage(raw) };
 };
 
 const logRowMatchesOpenSends = (row, { requestIds, providerIds, phones }) => {

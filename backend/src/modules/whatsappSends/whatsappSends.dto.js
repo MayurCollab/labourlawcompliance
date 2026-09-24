@@ -1,3 +1,5 @@
+import { toUserFacingStatus } from './whatsappFailureCodes.js';
+
 const toActorDto = (actorId, actorEmail) => {
   if (!actorId && !actorEmail) return null;
   if (actorId && typeof actorId === 'object') {
@@ -56,9 +58,19 @@ export const toWhatsAppSendDto = (send) => ({
     : null,
   templateSnapshot: send.templateSnapshot ?? null,
   status: send.status,
+  userStatus: toUserFacingStatus({
+    status: send.status,
+    failureCategory: send.failureCategory,
+    retryState: send.retryState,
+  }),
   requestId: send.requestId,
   providerMessageId: send.providerMessageId,
   errorMessage: send.errorMessage,
+  failureCode: send.failureCode ?? null,
+  failureCategory: send.failureCategory ?? null,
+  retryCount: send.retryCount ?? 0,
+  retryState: send.retryState ?? 'none',
+  nextRetryAt: send.nextRetryAt ?? null,
   sentAt: send.sentAt,
   deliveredAt: send.deliveredAt,
   readAt: send.readAt,

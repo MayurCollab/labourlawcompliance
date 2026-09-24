@@ -46,6 +46,7 @@ import type { WhatsAppCustomValues } from '@/types/whatsappTemplate.types';
 import { collectCustomVariables } from '@/utils/whatsappTemplatePreview';
 import { isValidWhatsAppMobile } from '@/utils/whatsappPhone';
 import { getApiErrorMessage } from '@/utils/apiError';
+import { getWhatsAppSkipReason } from '@/utils/whatsappBulkSend';
 import { toastError, toastSuccess } from '@/utils/toast';
 
 const previousMonth = () => {
@@ -504,7 +505,6 @@ export function Form5WhatsAppPage() {
       }).length,
     [selectedRows, rowContactState],
   );
-
   /** Toggled by clicking the summary line — brings incomplete rows to the top. */
   const [sortMissingFirst, setSortMissingFirst] = useState(false);
 
@@ -752,11 +752,12 @@ export function Form5WhatsAppPage() {
         }
         return { filingId: row.id, row, status: 'sent', message: '' };
       } catch (error) {
+        const skipReason = getWhatsAppSkipReason(error);
         return {
           filingId: row.id,
           row,
-          status: 'failed',
-          message: getApiErrorMessage(error, 'Send failed'),
+          status: skipReason ? 'skipped' : 'failed',
+          message: skipReason ?? getApiErrorMessage(error, 'Send failed'),
         };
       }
     },

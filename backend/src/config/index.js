@@ -153,6 +153,15 @@ const config = Object.freeze({
       'https://control.msg91.com/api/v5/report/logs/wa',
     /** Optional shared secret for POST /whatsapp-sends/webhooks/msg91 */
     webhookSecret: process.env.MSG91_WEBHOOK_SECRET || '',
+    /**
+     * Minimum gap before the same recipient can be sent another marketing
+     * template — prevents the burst-send pattern that triggers Meta's
+     * per-recipient engagement limits (131049/131056/130429/131048).
+     */
+    sendCooldownHours: Number(process.env.MSG91_SEND_COOLDOWN_HOURS) || 24,
+    /** How often the auto-retry sweep checks for sends due for a retry. */
+    retrySweepIntervalMs:
+      Number(process.env.MSG91_RETRY_SWEEP_INTERVAL_MS) || 5 * 60 * 1000,
   },
 
   storage: {

@@ -20,6 +20,7 @@ export type ClientLatestFiling = {
   generateStatus: 'pending' | 'generated' | 'failed';
   period: string;
   periodLabel: string | null;
+  ptAmount: number | null;
 };
 
 export type Client = {

@@ -78,6 +78,58 @@ router.post(
 
 /**
  * @openapi
+ * /whatsapp-sends/failure-summary:
+ *   get:
+ *     tags: [WhatsApp Sends]
+ *     summary: Failure-code volume breakdown (observability)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Counts per failure category
+ */
+router.get(
+  '/failure-summary',
+  checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
+  whatsappSendsController.getWhatsAppFailureSummary,
+);
+
+/**
+ * @openapi
+ * /whatsapp-sends/suppressions:
+ *   get:
+ *     tags: [WhatsApp Sends]
+ *     summary: List recipients suppressed from future marketing WhatsApp sends
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Paginated suppression list
+ */
+router.get(
+  '/suppressions',
+  checkPermission(PERMISSION_NAMES.FILINGS_VIEW),
+  whatsappSendsController.listSuppressedContacts,
+);
+
+/**
+ * @openapi
+ * /whatsapp-sends/suppressions/{id}:
+ *   delete:
+ *     tags: [WhatsApp Sends]
+ *     summary: Remove a contact from the WhatsApp suppression list
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Removed
+ */
+router.delete(
+  '/suppressions/:id',
+  checkPermission(PERMISSION_NAMES.FILINGS_SEND),
+  validate({ params: idParamSchema }),
+  whatsappSendsController.removeSuppression,
+);
+
+/**
+ * @openapi
  * /whatsapp-sends/{id}:
  *   delete:
  *     tags: [WhatsApp Sends]

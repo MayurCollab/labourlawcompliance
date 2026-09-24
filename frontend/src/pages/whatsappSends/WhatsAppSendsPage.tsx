@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ShieldOff } from 'lucide-react';
 
 import { Button } from '@/components/buttons';
 import { Badge } from '@/components/common/Badge';
@@ -23,13 +23,18 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   useDeleteWhatsAppSendMutation,
   useRefreshWhatsAppSendsMutation,
+  useRemoveWhatsAppSuppressionMutation,
+  useWhatsAppFailureSummaryQuery,
   useWhatsAppSendsQuery,
+  useWhatsAppSuppressionsQuery,
 } from '@/hooks/useWhatsAppSends';
 import { PATHS } from '@/routes/paths';
 import type {
   ListWhatsAppSendsParams,
+  WhatsAppFailureCategory,
   WhatsAppSend,
   WhatsAppSendStatus,
+  WhatsAppSuppression,
 } from '@/types/whatsappSend.types';
 
 const emptyFilters: FilterValues = {
@@ -75,6 +80,22 @@ const STATUS_LABELS: Record<WhatsAppSendStatus, string> = {
   delivered: 'Delivered',
   read: 'Read',
   failed: 'Failed',
+};
+
+const FAILURE_CATEGORY_LABELS: Record<WhatsAppFailureCategory, string> = {
+  permanent_opt_out: 'Opted out',
+  long_backoff_retry: 'Marketing limit (auto-retry)',
+  short_backoff_retry: 'Rate limited (auto-retry)',
+  quality_throttle: 'Quality throttled — needs review',
+  undeliverable_fallback: 'Undeliverable',
+  other: 'Other — needs review',
+};
+
+const RETRY_STATE_LABELS: Record<string, string> = {
+  scheduled: 'Retry scheduled',
+  exhausted: 'Retries exhausted',
+  suppressed: 'Suppressed',
+  none: '',
 };
 
 /**
@@ -130,6 +151,19 @@ export function WhatsAppSendsPage() {
   const refreshMutation = useRefreshWhatsAppSendsMutation();
   const deleteMutation = useDeleteWhatsAppSendMutation();
 
+  const failureSummaryQuery = useWhatsAppFailureSummaryQuery({
+    period: period || undefined,
+    locationIds: locationIds.length ? locationIds : undefined,
+    clientIds: clientIds.length ? clientIds : undefined,
+  });
+
+  const [showSuppressions, setShowSuppressions] = useState(false);
+  const [suppressionsPage, setSuppressionsPage] = useState(1);
+  const suppressionsQuery = useWhatsAppSuppressionsQuery(suppressionsPage);
+  const removeSuppressionMutation = useRemoveWhatsAppSuppressionMutation();
+  const [pendingUnsuppress, setPendingUnsuppress] =
+    useState<WhatsAppSuppression | null>(null);
+
   const columns: DataTableColumn<WhatsAppSend>[] = useMemo(
     () => {
       const cols: DataTableColumn<WhatsAppSend>[] = [
@@ -183,6 +217,25 @@ export function WhatsAppSendsPage() {
               {STATUS_LABELS[row.status] || row.status}
             </Badge>
           ),
+        },
+        {
+          id: 'failure',
+          header: 'Failure',
+          cell: (row) => {
+            if (row.status !== 'failed' || !row.failureCategory) return '—';
+            return (
+              <div className="min-w-0">
+                <div className="text-sm">
+                  {FAILURE_CATEGORY_LABELS[row.failureCategory] || row.failureCategory}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {row.failureCode ? `Code ${row.failureCode}` : null}
+                  {row.failureCode && row.retryState !== 'none' ? ' · ' : null}
+                  {RETRY_STATE_LABELS[row.retryState] || null}
+                </div>
+              </div>
+            );
+          },
         },
         {
           id: 'deliveredAt',
@@ -257,7 +310,125 @@ export function WhatsAppSendsPage() {
           { label: 'Form 5 WhatsApp', href: PATHS.form5Whatsapp },
           { label: 'Sends' },
         ]}
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leftIcon={<ShieldOff className="size-4" />}
+            onClick={() => setShowSuppressions((value) => !value)}
+          >
+            Suppressed contacts
+            {suppressionsQuery.data?.pagination.total
+              ? ` (${suppressionsQuery.data.pagination.total})`
+              : ''}
+          </Button>
+        }
       />
+
+      {failureSummaryQuery.data && failureSummaryQuery.data.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            Failures by cause:
+          </span>
+          {failureSummaryQuery.data.map((row) => (
+            <Badge
+              key={row.category}
+              variant={
+                row.category === 'quality_throttle' || row.category === 'other'
+                  ? 'destructive'
+                  : row.category === 'permanent_opt_out'
+                    ? 'secondary'
+                    : 'warning'
+              }
+              title={
+                row.lastSeenAt
+                  ? `Last seen ${formatDateTime(row.lastSeenAt)}`
+                  : undefined
+              }
+            >
+              {FAILURE_CATEGORY_LABELS[row.category] || row.category}: {row.count}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+      {showSuppressions ? (
+        <div className="space-y-2 rounded-md border p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              Suppressed WhatsApp contacts
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              Never sent a marketing template — opted out, or added manually.
+            </span>
+          </div>
+          {suppressionsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : suppressionsQuery.data?.suppressions.length ? (
+            <div className="divide-y">
+              {suppressionsQuery.data.suppressions.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{row.phone}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {row.reason === 'opted_out' ? 'Opted out' : 'Manual'}
+                      {row.failureCode ? ` · code ${row.failureCode}` : ''}
+                      {' · '}
+                      {formatDateTime(row.suppressedAt)}
+                    </div>
+                  </div>
+                  {canDelete ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPendingUnsuppress(row)}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No suppressed contacts.
+            </p>
+          )}
+          {suppressionsQuery.data && suppressionsQuery.data.pagination.totalPages > 1 ? (
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={suppressionsPage <= 1}
+                onClick={() => setSuppressionsPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {suppressionsQuery.data.pagination.page} of{' '}
+                {suppressionsQuery.data.pagination.totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  suppressionsPage >= suppressionsQuery.data.pagination.totalPages
+                }
+                onClick={() => setSuppressionsPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <FilterPanel
         leading={
@@ -387,6 +558,28 @@ export function WhatsAppSendsPage() {
           if (!pendingDelete) return;
           deleteMutation.mutate(pendingDelete.id, {
             onSuccess: () => setPendingDelete(null),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingUnsuppress)}
+        onOpenChange={(open) => {
+          if (!open) setPendingUnsuppress(null);
+        }}
+        title="Remove from suppression list?"
+        message={
+          pendingUnsuppress
+            ? `${pendingUnsuppress.phone} will be eligible for marketing WhatsApp sends again. Only do this if the opt-out was recorded in error.`
+            : ''
+        }
+        confirmLabel="Remove"
+        danger
+        loading={removeSuppressionMutation.isPending}
+        onConfirm={() => {
+          if (!pendingUnsuppress) return;
+          removeSuppressionMutation.mutate(pendingUnsuppress.id, {
+            onSuccess: () => setPendingUnsuppress(null),
           });
         }}
       />

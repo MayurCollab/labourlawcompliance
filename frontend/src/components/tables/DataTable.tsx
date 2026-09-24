@@ -139,7 +139,12 @@ const getValue = <T,>(row: T, key?: string): ReactNode => {
 };
 
 type SortHeaderProps = IHeaderParams & {
-  label: ReactNode;
+  /**
+   * Reads the current header content fresh on every call (rather than a
+   * value baked in when the column definition was built) — see the
+   * `columnsRef` comment on DataTable for why.
+   */
+  getLabel: () => ReactNode;
   columnId: string;
   sortable?: boolean;
   sort?: DataTableSort;
@@ -147,12 +152,14 @@ type SortHeaderProps = IHeaderParams & {
 };
 
 function SortHeader({
-  label,
+  getLabel,
   columnId,
   sortable,
   sort,
   onSortChange,
 }: SortHeaderProps) {
+  const label = getLabel();
+
   if (!sortable || !onSortChange) {
     return <span className="truncate">{label}</span>;
   }
@@ -225,6 +232,19 @@ export function DataTable<T>({
   expandedRowHeight = DEFAULT_EXPANDED_ROW_HEIGHT,
 }: DataTableProps<T>) {
   const gridApiRef = useRef<GridApi<RowEntry<T>> | null>(null);
+  /**
+   * Callers rarely memoize `columns` — a `cell`/`header` closing over fresh
+   * local state (e.g. a row-selection Set) is a brand new array every
+   * render. Rebuilding `columnDefs` on that churn forces AG Grid to tear
+   * down and recreate every cell/header renderer — the "whole grid
+   * flickers on checkbox click" symptom. Cell/header renderers below read
+   * the live column through this ref instead, so `columnDefs` itself only
+   * needs to change when a column's actual shape changes (see
+   * `columnSignature`), and `refreshCells`/`refreshHeader` (in the effect
+   * further down) repaint content in place without that rebuild.
+   */
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
   const [columnSizing, setColumnSizing] =
     useState<DataTableColumnSizing>('fit');
   const [maximized, setMaximized] = useState(false);
@@ -244,22 +264,44 @@ export function DataTable<T>({
   const fillParentHeight = !useAutoHeight && activeGridMaxHeight === '100%';
   const stickyViewport = !useAutoHeight && activeGridMaxHeight == null;
 
+  // Structural fingerprint of `columns` — everything that should force a
+  // real column-def rebuild (id/order, static sizing, sortability, a plain
+  // string header). Deliberately excludes `cell`/non-string `header`
+  // (closures), which are read live through `columnsRef` instead, so a
+  // caller re-creating those every render doesn't count as a "real" change.
+  const columnSignature = columns
+    .map((column) =>
+      [
+        column.id,
+        typeof column.header === 'string' ? column.header : '',
+        column.sortable ? '1' : '0',
+        column.className ?? '',
+        column.headerClassName ?? '',
+        column.width ?? '',
+        column.minWidth ?? '',
+        column.maxWidth ?? '',
+        column.multiline ? '1' : '0',
+      ].join('\u0001'),
+    )
+    .join('\u0002');
+
   const columnDefs = useMemo<ColDef<RowEntry<T>>[]>(
     () =>
       columns.map((column) => {
+        const columnId = column.id;
         const canSort = Boolean(column.sortable && onSortChange);
         const sortDir: AgSortDirection | undefined =
-          sort?.sortBy === column.id ? sort.sortOrder : undefined;
+          sort?.sortBy === columnId ? sort.sortOrder : undefined;
 
-        const isActions = column.id === 'actions';
-        const isSelect = column.id === 'select';
+        const isActions = columnId === 'actions';
+        const isSelect = columnId === 'select';
         const defaultMinWidth = isActions ? 168 : isSelect ? 52 : 96;
         const defaultWidth = isActions ? 180 : isSelect ? 56 : undefined;
         const fixedWidth = Boolean(isActions || isSelect || column.width);
 
         const def: ColDef<RowEntry<T>> = {
-          colId: column.id,
-          headerName: typeof column.header === 'string' ? column.header : column.id,
+          colId: columnId,
+          headerName: typeof column.header === 'string' ? column.header : columnId,
           sortable: false,
           suppressHeaderMenuButton: true,
           suppressMovable: true,
@@ -280,8 +322,10 @@ export function DataTable<T>({
           ),
           headerComponent: SortHeader,
           headerComponentParams: {
-            label: column.header,
-            columnId: column.id,
+            getLabel: () =>
+              columnsRef.current.find((c) => c.id === columnId)?.header ??
+              columnId,
+            columnId,
             sortable: canSort,
             sort,
             onSortChange,
@@ -289,16 +333,34 @@ export function DataTable<T>({
           cellRenderer: (params: ICellRendererParams<RowEntry<T>>) => {
             if (!params.data || params.data.kind === 'detail') return null;
             const row = params.data.row;
-            if (column.cell) return column.cell(row);
-            return getValue(row, column.accessorKey);
+            const liveColumn = columnsRef.current.find((c) => c.id === columnId);
+            if (liveColumn?.cell) return liveColumn.cell(row);
+            return getValue(row, liveColumn?.accessorKey);
           },
           comparator: () => 0,
         };
 
         return def;
       }),
-    [columnSizing, columns, onSortChange, sort],
+    // Intentionally not depending on `columns` (or `sort`'s object identity
+    // beyond its own fields) — see columnSignature above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [columnSignature, columnSizing, onSortChange, sort],
   );
+
+  // Column defs are now stable across a `columns` reference change (see
+  // above) — but content that genuinely depends on that render (e.g. a
+  // checkbox's `checked`) still needs repainting. `force: true` re-invokes
+  // cell/header renderers in place without AG Grid tearing down the grid,
+  // which is what actually eliminates the flicker.
+  useEffect(() => {
+    const api = gridApiRef.current;
+    if (!api || (typeof api.isDestroyed === 'function' && api.isDestroyed())) {
+      return;
+    }
+    api.refreshCells({ force: true });
+    api.refreshHeader();
+  }, [columns]);
 
   const applyColumnSizing = useCallback(
     (api: GridApi<RowEntry<T>> | null | undefined, mode: DataTableColumnSizing) => {
@@ -391,7 +453,10 @@ export function DataTable<T>({
 
   useEffect(() => {
     applyColumnSizing(gridApiRef.current, columnSizing);
-  }, [applyColumnSizing, columnSizing, columns, data]);
+    // columnSignature (not `columns`) — resizing only needs to rerun when a
+    // column's shape actually changes, not every render of the caller.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyColumnSizing, columnSizing, columnSignature, data]);
 
   useEffect(() => {
     if (!inFullscreen) return undefined;

@@ -19,7 +19,12 @@ import { extractPhyCode, legalCompanyName, normalizePhyCode } from '../uploads/m
 import * as uploadsRepository from '../uploads/uploads.repository.js';
 import { formatPeriodLabel } from '../../utils/period.js';
 import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
-import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
+import {
+  assertRecipientNotInCooldown,
+  assertRecipientNotSuppressed,
+  classifySendError,
+  recordWhatsAppSend,
+} from '../whatsappSends/whatsappSends.service.js';
 import * as whatsappTemplatesService from '../whatsappTemplates/whatsappTemplates.service.js';
 import { WHATSAPP_BODY_MODES } from '../whatsappTemplates/whatsappTemplates.constants.js';
 import {
@@ -200,6 +205,7 @@ export const listClients = async (query) => {
               generateStatus: latest.generateStatus,
               period: latest.period,
               periodLabel: latest.periodLabel,
+              ptAmount: latest.ptAmount ?? null,
             }
           : null,
       };
@@ -781,6 +787,9 @@ export const sendClientWhatsApp = async (id, body, actorId) => {
     });
   }
 
+  await assertRecipientNotSuppressed(phone, template);
+  await assertRecipientNotInCooldown(phone, template);
+
   const rawRecipientName =
     body?.recipientName !== undefined &&
     body?.recipientName !== null &&
@@ -844,6 +853,7 @@ export const sendClientWhatsApp = async (id, body, actorId) => {
     periodLabel: sourceData.periodLabel || null,
     whatsappTemplateId: template.id || template._id,
     templateSnapshot,
+    bodyValues,
     actorId,
   };
 
@@ -879,6 +889,12 @@ export const sendClientWhatsApp = async (id, body, actorId) => {
       errorMessage: error?.message || 'WhatsApp send failed',
       failedAt: new Date(),
     });
+    const { userMessage } = classifySendError(error);
+    if (userMessage) {
+      throw new AppError(userMessage, error.statusCode || 502, {
+        code: error.code || 'MSG91_SEND_REJECTED',
+      });
+    }
     throw error;
   }
 

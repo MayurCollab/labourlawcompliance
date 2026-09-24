@@ -31,7 +31,14 @@ import {
 } from '../uploads/importCache.js';
 import * as ptSlabsService from '../ptSlabs/ptSlabs.service.js';
 import { WHATSAPP_SEND_STATUSES } from '../whatsappSends/whatsappSends.constants.js';
-import { recordWhatsAppSend } from '../whatsappSends/whatsappSends.service.js';
+import {
+  assertRecipientNotInCooldown,
+  assertRecipientNotSuppressed,
+  classifySendError,
+  isRecipientInSendCooldown,
+  isRecipientSuppressed,
+  recordWhatsAppSend,
+} from '../whatsappSends/whatsappSends.service.js';
 import * as whatsappTemplatesService from '../whatsappTemplates/whatsappTemplates.service.js';
 import { WHATSAPP_BODY_MODES } from '../whatsappTemplates/whatsappTemplates.constants.js';
 import {
@@ -1204,6 +1211,9 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     });
   }
 
+  await assertRecipientNotSuppressed(phone, template);
+  await assertRecipientNotInCooldown(phone, template);
+
   const rawRecipientName =
     body?.recipientName !== undefined &&
     body?.recipientName !== null &&
@@ -1270,6 +1280,7 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
     mediaUrl,
     whatsappTemplateId: template.id || template._id,
     templateSnapshot,
+    bodyValues,
     actorId,
   };
 
@@ -1306,6 +1317,12 @@ export const sendFilingWhatsApp = async (id, body, actorId) => {
       errorMessage: error?.message || 'WhatsApp send failed',
       failedAt: new Date(),
     });
+    const { userMessage } = classifySendError(error);
+    if (userMessage) {
+      throw new AppError(userMessage, error.statusCode || 502, {
+        code: error.code || 'MSG91_SEND_REJECTED',
+      });
+    }
     throw error;
   }
 
@@ -1436,6 +1453,24 @@ export const bulkSendFilingsWhatsApp = async (
       continue;
     }
 
+    if (await isRecipientSuppressed(phone, template)) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Contact has opted out of WhatsApp messages',
+      });
+      continue;
+    }
+
+    if (await isRecipientInSendCooldown(phone, { template })) {
+      skipped.push(filing.id);
+      errors.push({
+        clientCode,
+        message: 'Recently sent — skipped to protect delivery health',
+      });
+      continue;
+    }
+
     // Recipient name is optional — resolved to empty when none is set;
     // resolveWhatsAppMessage skips it in the missing-field check and cleans
     // up the surrounding text.
@@ -1507,6 +1542,7 @@ export const bulkSendFilingsWhatsApp = async (
     });
   } catch (error) {
     // Entire batch failed - mark all as failed
+    const { userMessage } = classifySendError(error);
     for (const entry of validEntries) {
       const filing = entry.filing;
       const clientId = clientRefId(filing.client);
@@ -1523,6 +1559,7 @@ export const bulkSendFilingsWhatsApp = async (
         mediaUrl: entry.mediaUrl,
         whatsappTemplateId: template.id || template._id,
         templateSnapshot,
+        bodyValues: entry.bodyValues,
         status: WHATSAPP_SEND_STATUSES.FAILED,
         errorMessage: error?.message || 'Bulk send failed',
         failedAt: new Date(),
@@ -1531,7 +1568,7 @@ export const bulkSendFilingsWhatsApp = async (
 
       errors.push({
         clientCode: filing.clientCode || 'N/A',
-        message: error?.message || 'Bulk send failed',
+        message: userMessage || error?.message || 'Bulk send failed',
       });
     }
 
@@ -1547,18 +1584,19 @@ export const bulkSendFilingsWhatsApp = async (
   let sentCount = 0;
   let failedCount = 0;
 
+  let entryOffset = 0;
   for (const chunk of result.chunks || []) {
     // sendWhatsAppTemplateBatch returns { entries, ok, response, error } per
-    // chunk — not a "phones" field — so this always came out empty and every
-    // bulk send silently skipped recording, reporting 0 sent / 0 failed no
-    // matter what MSG91 actually did.
-    const chunkPhones = (chunk.entries || []).flatMap((entry) => entry.to || []);
+    // chunk, each chunk a consecutive slice of the entries passed in. Pair
+    // them back by position, not phone — two filings can share a number
+    // (e.g. one client's Form 5 for two months) and each must be recorded.
+    const chunkSize = chunk.entries?.length || 0;
+    const chunkEntries = validEntries.slice(entryOffset, entryOffset + chunkSize);
+    entryOffset += chunkSize;
     const chunkOk = chunk.ok;
     const chunkError = chunk.error;
 
-    for (const phone of chunkPhones) {
-      const entry = validEntries.find((e) => e.phone === phone);
-      if (!entry) continue;
+    for (const entry of chunkEntries) {
 
       const filing = entry.filing;
       const clientId = clientRefId(filing.client);
@@ -1576,6 +1614,7 @@ export const bulkSendFilingsWhatsApp = async (
         mediaUrl: entry.mediaUrl,
         whatsappTemplateId: template.id || template._id,
         templateSnapshot,
+        bodyValues: entry.bodyValues,
         actorId,
       };
 
@@ -1603,9 +1642,10 @@ export const bulkSendFilingsWhatsApp = async (
           failedAt: now,
         });
 
+        const { userMessage } = classifySendError(chunkError);
         errors.push({
           clientCode: filing.clientCode || 'N/A',
-          message: chunkError?.message || 'Chunk send failed',
+          message: userMessage || chunkError?.message || 'Chunk send failed',
         });
 
         failedCount++;

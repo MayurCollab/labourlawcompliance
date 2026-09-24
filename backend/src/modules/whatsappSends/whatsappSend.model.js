@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
-import { WHATSAPP_SEND_STATUS_VALUES } from './whatsappSends.constants.js';
+import {
+  WHATSAPP_FAILURE_CATEGORY_VALUES,
+  WHATSAPP_RETRY_STATE_VALUES,
+  WHATSAPP_SEND_STATUS_VALUES,
+} from './whatsappSends.constants.js';
 
 /**
  * Outbound WhatsApp send ledger (Form 5 via MSG91).
@@ -82,6 +86,16 @@ const whatsappSendSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    /**
+     * Resolved MSG91 body values (body_1..body_N) as they were actually sent —
+     * captured so a scheduled retry can resend byte-for-byte identical
+     * content without re-deriving it from a filing/client that may have
+     * since changed.
+     */
+    bodyValues: {
+      type: [String],
+      default: null,
+    },
     status: {
       type: String,
       enum: WHATSAPP_SEND_STATUS_VALUES,
@@ -109,6 +123,37 @@ const whatsappSendSchema = new mongoose.Schema(
       trim: true,
       default: null,
       maxlength: [500, 'Error message cannot exceed 500 characters'],
+    },
+    /** Numeric MSG91/Meta error code parsed out of errorMessage, e.g. "131049". */
+    failureCode: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [12, 'Failure code cannot exceed 12 characters'],
+    },
+    /** Classification of failureCode — see whatsappFailureCodes.js. */
+    failureCategory: {
+      type: String,
+      enum: [...WHATSAPP_FAILURE_CATEGORY_VALUES, null],
+      default: null,
+    },
+    /** Auto-retry attempts made so far for this send. */
+    retryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    /** When the retry scheduler should next attempt this send. */
+    nextRetryAt: {
+      type: Date,
+      default: null,
+    },
+    /** Lifecycle of the auto-retry, independent of `status`. */
+    retryState: {
+      type: String,
+      enum: WHATSAPP_RETRY_STATE_VALUES,
+      default: 'none',
+      index: true,
     },
     /** Sanitized subset of the MSG91 accept response (ids + status only). */
     providerResponse: {
@@ -159,6 +204,8 @@ whatsappSendSchema.index({ client: 1, sentAt: -1 });
 whatsappSendSchema.index({ period: 1, sentAt: -1 });
 whatsappSendSchema.index({ requestId: 1, sentAt: -1 });
 whatsappSendSchema.index({ providerMessageId: 1, sentAt: -1 });
+whatsappSendSchema.index({ retryState: 1, nextRetryAt: 1 });
+whatsappSendSchema.index({ phone: 1, sentAt: -1 });
 
 whatsappSendSchema.set('toJSON', {
   virtuals: true,

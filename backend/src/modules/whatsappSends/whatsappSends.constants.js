@@ -1,3 +1,5 @@
+import { WHATSAPP_FAILURE_CATEGORIES } from './whatsappFailureCodes.js';
+
 export const WHATSAPP_SEND_STATUSES = Object.freeze({
   ACCEPTED: 'accepted',
   SENT: 'sent',
@@ -19,6 +21,22 @@ export const WHATSAPP_SEND_STATUS_VALUES = /** @type {[string, ...string[]]} */ 
   Object.values(WHATSAPP_SEND_STATUSES)
 );
 
+/** Lifecycle of a send's auto-retry, independent of `status`. */
+export const WHATSAPP_RETRY_STATES = Object.freeze({
+  NONE: 'none',
+  SCHEDULED: 'scheduled',
+  EXHAUSTED: 'exhausted',
+  SUPPRESSED: 'suppressed',
+});
+
+export const WHATSAPP_RETRY_STATE_VALUES = /** @type {[string, ...string[]]} */ (
+  Object.values(WHATSAPP_RETRY_STATES)
+);
+
+export const WHATSAPP_FAILURE_CATEGORY_VALUES = Object.values(
+  WHATSAPP_FAILURE_CATEGORIES,
+);
+
 export const WHATSAPP_SEND_SORTABLE_FIELDS = Object.freeze([
   'sentAt',
   'status',
@@ -32,6 +50,9 @@ export const WHATSAPP_SEND_SORTABLE_FIELDS = Object.freeze([
 export const WHATSAPP_SENDS_CODES = Object.freeze({
   SEND_NOT_FOUND: 'WHATSAPP_SEND_NOT_FOUND',
   WEBHOOK_UNAUTHORIZED: 'WHATSAPP_WEBHOOK_UNAUTHORIZED',
+  RECIPIENT_SUPPRESSED: 'WHATSAPP_RECIPIENT_SUPPRESSED',
+  RECENTLY_SENT: 'WHATSAPP_RECENTLY_SENT',
+  SUPPRESSION_NOT_FOUND: 'WHATSAPP_SUPPRESSION_NOT_FOUND',
 });
 
 export const WHATSAPP_SENDS_MESSAGES = Object.freeze({
@@ -39,4 +60,7 @@ export const WHATSAPP_SENDS_MESSAGES = Object.freeze({
   DELETED: 'WhatsApp send deleted successfully.',
   REFRESHED: 'WhatsApp send statuses refreshed.',
   WEBHOOK_OK: 'WhatsApp status webhook accepted.',
+  FAILURE_SUMMARY_FETCHED: 'WhatsApp failure summary fetched successfully.',
+  SUPPRESSIONS_FETCHED: 'Suppressed WhatsApp contacts fetched successfully.',
+  SUPPRESSION_REMOVED: 'Contact removed from the WhatsApp suppression list.',
 });
