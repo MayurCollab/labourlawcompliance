@@ -179,6 +179,29 @@ describe('employeeListForFiling', () => {
     expect(listed[0].ptGross).toBeNull();
   });
 
+  test('employeesForClientLocation treats PT GROSS 0 as missing (₹200, null display)', () => {
+    const listed = employeesForClientLocation({
+      employees: [
+        {
+          employeeNo: 'E1',
+          employeeName: 'A',
+          period: '2026-07',
+          client: 'client-1',
+          phyCode: '0083',
+          locationName: 'Anand',
+          ptGross: 0,
+          pTax: 0,
+          unmatched: false,
+        },
+      ],
+      client,
+      period: '2026-07',
+      slabs,
+    });
+    expect(listed[0].pTax).toBe(200);
+    expect(listed[0].ptGross).toBeNull();
+  });
+
   test('employeeCountsForList splits taxable and exempt', () => {
     const listed = employeesForClientLocation({
       employees,

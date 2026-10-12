@@ -7,6 +7,7 @@ import {
   mappingHasRequiredFields,
   parseMasterWorkbook,
   parsePeriod,
+  parsePtGross,
   stringifyCell,
 } from '../../src/modules/uploads/masterParse.js';
 import {
@@ -46,6 +47,17 @@ describe('masterParse', () => {
 
   test('stringifyCell formats dates as YYYY-MM-DD', () => {
     expect(stringifyCell(new Date(2026, 6, 15))).toBe('2026-07-15');
+  });
+
+  test('parsePtGross treats blank, dash, and 0 as missing', () => {
+    expect(parsePtGross(null)).toBeNull();
+    expect(parsePtGross('')).toBeNull();
+    expect(parsePtGross('-')).toBeNull();
+    expect(parsePtGross('—')).toBeNull();
+    expect(parsePtGross(0)).toBeNull();
+    expect(parsePtGross('0')).toBeNull();
+    expect(parsePtGross(12478)).toBe(12478);
+    expect(parsePtGross('12,478')).toBe(12478);
   });
 
   test('detectHeaderRow returns -1 when the three marker headers are missing', () => {

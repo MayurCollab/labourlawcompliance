@@ -5,13 +5,35 @@
 
 export const VARIANCE_LIMIT = 50;
 
-/** When salary PT GROSS is blank, P.Tax is this fixed rate. */
+/** When salary PT GROSS is blank/0/dash, P.Tax is this fixed rate. */
 export const DEFAULT_PT_WITHOUT_GROSS = 200;
+
+const DASH_GROSS = new Set(['-', '–', '—', '−']);
 
 const asNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * True when PT GROSS is missing or placeholder (blank, dash, or 0).
+ * Those rows use the fixed ₹200 rate instead of the exempt slab.
+ */
+export const isMissingPtGross = (value) => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text || DASH_GROSS.has(text)) return true;
+  }
+  const amount = asNumber(value);
+  return amount === null || amount === 0;
+};
+
+/** PT GROSS for slab lookup: blank / dash / 0 → null (means apply ₹200). */
+export const asPtGross = (value) => {
+  if (isMissingPtGross(value)) return null;
+  return asNumber(value);
 };
 
 /** First UTC day of a YYYY-MM period — used to pick effective-dated slabs. */
@@ -52,20 +74,20 @@ export const findDefaultPtSlab = (slabs = []) => {
 };
 
 /**
- * Pick the slab for an employee. Missing PT GROSS → top open slab / ₹200.
+ * Pick the slab for an employee. Missing / 0 / dash PT GROSS → top open slab / ₹200.
  */
 export const findSlabForEmployee = (slabs, ptGross) => {
-  const amount = asNumber(ptGross);
+  const amount = asPtGross(ptGross);
   if (amount === null) return findDefaultPtSlab(slabs);
   return findSlabForGross(slabs, amount);
 };
 
 /**
- * P.Tax for salary/Form 5: slab rate from PT GROSS, ₹200 when gross is blank,
- * or 0 when gross does not fall in any active slab.
+ * P.Tax for salary/Form 5: slab rate from PT GROSS, ₹200 when gross is
+ * blank / dash / 0, or 0 when gross does not fall in any active slab.
  */
 export const resolvePTax = (slabs, ptGross) => {
-  const amount = asNumber(ptGross);
+  const amount = asPtGross(ptGross);
   if (amount === null) return DEFAULT_PT_WITHOUT_GROSS;
   const slab = findSlabForGross(slabs, amount);
   if (slab?.rate !== undefined && slab?.rate !== null) return slab.rate;
@@ -85,7 +107,8 @@ const emptyBucket = (slab) => ({
 
 /**
  * Bucket matched employees by PT GROSS. Tax uses the slab rate, not sheet P_TAX.
- * Blank PT GROSS uses the open-ended (₹200) band. Sheet P_TAX flags variances only.
+ * Blank / dash / 0 PT GROSS uses the open-ended (₹200) band.
+ * Sheet P_TAX flags variances only.
  */
 export const computePt = (slabs, employees = []) => {
   const buckets = (slabs || []).map(emptyBucket);
@@ -93,12 +116,16 @@ export const computePt = (slabs, employees = []) => {
   let unmatchedExcluded = 0;
   let unslottedCount = 0;
   let employeeCount = 0;
+  let missingGrossCount = 0;
 
   for (const employee of employees || []) {
     if (employee.unmatched) {
       unmatchedExcluded += 1;
       continue;
     }
+
+    const missingGross = isMissingPtGross(employee.ptGross);
+    if (missingGross) missingGrossCount += 1;
 
     const slab = findSlabForEmployee(slabs, employee.ptGross);
     if (!slab) {
@@ -130,7 +157,7 @@ export const computePt = (slabs, employees = []) => {
     if (sheetPTax !== null && sheetPTax !== slab.rate) {
       variances.push({
         employeeNo: String(employee.employeeNo ?? ''),
-        ptGross: asNumber(employee.ptGross),
+        ptGross: asPtGross(employee.ptGross),
         sheetPTax,
         computedRate: slab.rate,
       });
@@ -150,6 +177,7 @@ export const computePt = (slabs, employees = []) => {
     employeeCount,
     unmatchedExcluded,
     unslottedCount,
+    missingGrossCount,
     varianceCount: variances.length,
     variances: variances.slice(0, VARIANCE_LIMIT),
   };

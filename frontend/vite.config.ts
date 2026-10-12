@@ -46,15 +46,18 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       allowedHosts: true,
       proxy: {
+        // Prefer 127.0.0.1 over "localhost" — on Windows, localhost can resolve
+        // to ::1 and hit a different process bound on the same port (IPv6),
+        // which surfaces as "Authentication required" on login.
         '/api': {
-          target: process.env.VITE_API_URL || 'http://localhost:5000',
+          target: process.env.VITE_API_URL || 'http://127.0.0.1:5000',
           changeOrigin: true,
         },
         // Backend serves stored files at /uploads/* (avatars, etc.).
         // The React app route is also /uploads — bypass proxy on reload so
         // Vite serves index.html instead of hitting the file middleware.
         '/uploads': {
-          target: process.env.VITE_API_URL || 'http://localhost:5000',
+          target: process.env.VITE_API_URL || 'http://127.0.0.1:5000',
           changeOrigin: true,
           bypass(req) {
             const pathname = (req.url ?? '').split('?')[0] ?? '';

@@ -116,6 +116,16 @@ export function FilingComputeDrawer({
   const employeePreview = current?.employeePreview;
   const locationName = filing?.client?.location?.name ?? '';
 
+  const missingGrossCount = useMemo(() => {
+    if ((computation?.missingGrossCount ?? 0) > 0) {
+      return computation?.missingGrossCount ?? 0;
+    }
+    if (!employeePreview?.employees?.length) return 0;
+    return employeePreview.employees.filter(
+      (row) => row.ptGross === null || row.ptGross === undefined || row.ptGross === 0,
+    ).length;
+  }, [computation?.missingGrossCount, employeePreview?.employees]);
+
   const bundledTemplates = bundledQuery.data ?? [];
   const resolvedTemplateId = resolvedQuery.data?.template?.id ?? '';
   const activeTemplateId = selectedTemplateId || resolvedTemplateId;
@@ -488,6 +498,19 @@ export function FilingComputeDrawer({
                 ? ` (${current.salaryEmployeeCount} employees)`
                 : ''}
               . Confirm this before generating Form 5.
+            </div>
+          ) : null}
+
+          {missingGrossCount > 0 ? (
+            <div
+              role="status"
+              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-100"
+            >
+              {missingGrossCount === 1
+                ? '1 employee has'
+                : `${missingGrossCount} employees have`}{' '}
+              blank, 0, or &quot;-&quot; PT GROSS. P.Tax ₹200 will be applied for
+              each on Form 5 (gross shows —).
             </div>
           ) : null}
 

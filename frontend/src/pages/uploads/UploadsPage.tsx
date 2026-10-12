@@ -76,7 +76,7 @@ const KIND_OPTIONS: {
   {
     label: 'SalarySheet',
     value: 'salary',
-    hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO is required; PT GROSS, PHY_CODE and Client code are optional. Blank PT GROSS uses P.Tax ₹200.',
+    hint: 'Typical file: SalarySheet All Employees.xlsx. EMPNO is required; PT GROSS, PHY_CODE and Client code are optional. Blank, 0, or "-" PT GROSS uses P.Tax ₹200.',
   },
   {
     label: 'Client addresses / RC',

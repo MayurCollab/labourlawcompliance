@@ -4,6 +4,7 @@
  */
 
 import { legalCompanyName, normalizePhyCode } from '../uploads/masterParse.js';
+import { asPtGross, isMissingPtGross } from './ptCompute.js';
 
 const ACT_NAME =
   'Gujarat State Tax on Professions, Trades, Callings and Employments Act';
@@ -122,6 +123,7 @@ export const buildComputationFromMaster = (filing, slabs = []) => {
     employeeCount: countable,
     unmatchedExcluded: 0,
     unslottedCount: 0,
+    missingGrossCount: 0,
     varianceCount: 0,
     variances: [],
     computedAt: null,
@@ -216,15 +218,13 @@ export const buildForm5Values = ({
   const showEmpNo = listedEmployees.some(
     (row) => String(row?.employeeNo ?? '').trim() !== '',
   );
-  const showPtGross = listedEmployees.some(
-    (row) => row?.ptGross !== null && row?.ptGross !== undefined && row?.ptGross !== '',
-  );
+  const showPtGross = listedEmployees.some((row) => !isMissingPtGross(row?.ptGross));
   const employeeListExtraCols =
     (showEmpNo ? 1 : 0) + (showPhyCode ? 1 : 0) + (showPtGross ? 1 : 0);
-  const employeesTotalPtGross = listedEmployees.reduce(
-    (sum, row) => sum + (Number(row.ptGross) || 0),
-    0,
-  );
+  const employeesTotalPtGross = listedEmployees.reduce((sum, row) => {
+    const gross = asPtGross(row.ptGross);
+    return sum + (gross ?? 0);
+  }, 0);
   const employeesTotalPTax = listedEmployees.reduce(
     (sum, row) => sum + (Number(row.pTax) || 0),
     0,

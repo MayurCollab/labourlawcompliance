@@ -16,7 +16,7 @@ import {
 import {
   legalCompanyName,
   normalizePhyCode,
-  parseAmount,
+  parsePtGross,
   stringifyCell,
 } from '../uploads/masterParse.js';
 import { EMPLOYEES_CODES } from './employees.constants.js';
@@ -171,7 +171,7 @@ export const createEmployee = async (data, actorId) => {
   const slabs = await ptSlabsService.listEffectiveSlabs(
     periodToDate(data.period) || new Date(),
   );
-  const ptGross = data.ptGross ?? null;
+  const ptGross = parsePtGross(data.ptGross);
   const pTax = resolvePTax(slabs, ptGross);
 
   const employee = await employeesRepository.createEmployee({
@@ -244,11 +244,12 @@ export const updateEmployee = async (id, data, actorId) => {
     employee.state = blankToNull(data.state) ?? 'Gujarat';
   }
   if (data.ptGross !== undefined) {
-    employee.ptGross = data.ptGross;
+    const ptGross = parsePtGross(data.ptGross);
+    employee.ptGross = ptGross;
     const slabs = await ptSlabsService.listEffectiveSlabs(
       periodToDate(period) || new Date(),
     );
-    employee.pTax = resolvePTax(slabs, data.ptGross);
+    employee.pTax = resolvePTax(slabs, ptGross);
   }
 
   employee.updatedBy = actorId;
@@ -383,7 +384,7 @@ export const prepareSalaryUpsert = ({
     return { outcome: 'skipped', reason: 'Missing or unrecognised period' };
   }
 
-  const ptGross = parseAmount(fields.ptGross);
+  const ptGross = parsePtGross(fields.ptGross);
 
   const rawPhy = normalizePhyCode(fields.phyCode);
   const rawClientCode = normalizeClientCode(fields.clientCode);

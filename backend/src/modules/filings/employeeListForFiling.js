@@ -1,4 +1,4 @@
-import { resolvePTax } from './ptCompute.js';
+import { asPtGross, resolvePTax } from './ptCompute.js';
 
 export const normalizeLocationName = (value) =>
   String(value ?? '')
@@ -88,7 +88,8 @@ export const employeesForClientLocation = ({
       employeeNo: employee.employeeNo ?? '',
       employeeName: employee.employeeName ?? '',
       locationName: employee.locationName ?? '',
-      ptGross: employee.ptGross ?? null,
+      // Blank / dash / 0 gross → null so Form 5 and preview show "—" not 0.
+      ptGross: asPtGross(employee.ptGross),
       pTax: computedPTax,
       phyCode: employee.phyCode ?? '',
     };

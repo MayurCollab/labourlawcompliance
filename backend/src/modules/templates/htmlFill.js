@@ -166,6 +166,10 @@ const registerHelpers = () => {
   );
 
   Handlebars.registerHelper('currency', (value) => {
+    // null/undefined/'' must not become 0 (Number(null) === 0).
+    if (value === null || value === undefined || value === '') {
+      return '—';
+    }
     const n = Number(value);
     if (!Number.isFinite(n)) return formatForm5Value(value);
     return n.toLocaleString('en-IN');

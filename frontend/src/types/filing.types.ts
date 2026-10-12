@@ -41,6 +41,8 @@ export type FilingComputation = {
   exemptEmployeeCount?: number;
   unmatchedExcluded: number;
   unslottedCount: number;
+  /** Employees with blank / dash / 0 PT GROSS (each charged ₹200). */
+  missingGrossCount?: number;
   varianceCount: number;
   variances: FilingVariance[];
   computedAt: string;

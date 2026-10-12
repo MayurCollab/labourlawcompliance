@@ -303,4 +303,22 @@ describe('Salary ingest upsert', () => {
     const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
     await storage.deleteFile(stored.storedPath);
   });
+
+  test('PT GROSS of 0 or dash stores null and fixed P.Tax 200', async () => {
+    const { created, result } = await uploadAndImport([
+      salaryRow('E9101', 'Zero Gross', '0083', { ptGross: 0, pTax: 1 }),
+      salaryRow('E9102', 'Dash Gross', '0083', { ptGross: '-', pTax: 50 }),
+    ]);
+
+    expect(result.report.skipped).toHaveLength(0);
+    expect(result.report.inserted).toBe(2);
+    const employees = await Employee.find().sort({ employeeNo: 1 });
+    expect(employees[0].ptGross).toBeNull();
+    expect(employees[0].pTax).toBe(200);
+    expect(employees[1].ptGross).toBeNull();
+    expect(employees[1].pTax).toBe(200);
+
+    const stored = await uploadsRepository.findUploadByIdWithPath(created.id);
+    await storage.deleteFile(stored.storedPath);
+  });
 });

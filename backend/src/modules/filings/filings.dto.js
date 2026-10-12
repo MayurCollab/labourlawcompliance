@@ -32,6 +32,7 @@ export const toComputationDto = (computation) => {
     exemptEmployeeCount: computation.exemptEmployeeCount ?? 0,
     unmatchedExcluded: computation.unmatchedExcluded,
     unslottedCount: computation.unslottedCount,
+    missingGrossCount: computation.missingGrossCount ?? 0,
     varianceCount: computation.varianceCount,
     variances: (computation.variances || []).map(toVarianceDto),
     computedAt: computation.computedAt,

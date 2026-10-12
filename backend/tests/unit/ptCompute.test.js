@@ -83,9 +83,28 @@ describe('ptCompute', () => {
     ]);
     expect(result.employeeCount).toBe(3);
     expect(result.unslottedCount).toBe(0);
+    expect(result.missingGrossCount).toBe(2);
     const top = result.slabs.find((row) => row.salaryFrom === 12000);
     expect(top.employeeCount).toBe(3);
     expect(top.taxAmount).toBe(600);
+    expect(result.totalA).toBe(600);
+  });
+
+  test('PT GROSS of 0 or dash uses ₹200, not the exempt slab', () => {
+    const result = computePt(GUJARAT_DEFAULT_SLABS, [
+      employee('E1', 0),
+      employee('E2', '-'),
+      employee('E3', '—'),
+      employee('E4', 2500),
+    ]);
+    expect(result.employeeCount).toBe(4);
+    expect(result.missingGrossCount).toBe(3);
+    const top = result.slabs.find((row) => row.salaryFrom === 12000);
+    const exempt = result.slabs.find((row) => row.rate === 0);
+    expect(top.employeeCount).toBe(3);
+    expect(top.taxAmount).toBe(600);
+    expect(exempt.employeeCount).toBe(1);
+    expect(exempt.taxAmount).toBe(0);
     expect(result.totalA).toBe(600);
   });
 });

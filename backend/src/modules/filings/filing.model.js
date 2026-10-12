@@ -155,6 +155,7 @@ const filingSchema = new mongoose.Schema({
       exemptEmployeeCount: { type: Number, default: 0 },
       unmatchedExcluded: { type: Number, default: 0 },
       unslottedCount: { type: Number, default: 0 },
+      missingGrossCount: { type: Number, default: 0 },
       varianceCount: { type: Number, default: 0 },
       variances: {
         type: [

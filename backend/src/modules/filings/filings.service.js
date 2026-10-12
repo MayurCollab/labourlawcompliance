@@ -672,6 +672,7 @@ export const computeFiling = async (id, actorId) => {
       taxableEmployeeCount: counts.taxableEmployeeCount,
       exemptEmployeeCount: counts.exemptEmployeeCount,
       unmatchedExcluded: result.unmatchedExcluded,
+      missingGrossCount: result.missingGrossCount,
       varianceCount: result.varianceCount,
     },
   });

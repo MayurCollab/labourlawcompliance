@@ -384,6 +384,23 @@ export const parseAmount = (value) => {
   return Number.isFinite(amount) ? amount : null;
 };
 
+const PT_GROSS_DASH = new Set(['-', '–', '—', '−']);
+
+/**
+ * PT GROSS from salary sheets: blank, dash placeholders, and 0 mean
+ * "no gross" → null (Form 5 / slabs apply fixed ₹200 P.Tax).
+ */
+export const parsePtGross = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || PT_GROSS_DASH.has(trimmed)) return null;
+  }
+  const amount = parseAmount(value);
+  if (amount === null || amount === 0) return null;
+  return amount;
+};
+
 export const parseExcelDate = (value) => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   const text = stringifyCell(value);

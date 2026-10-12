@@ -47,10 +47,14 @@ const toPayload = (values: EmployeeFormValues): EmployeePayload => ({
   employeeName: emptyToNull(values.employeeName),
   period: values.period,
   state: emptyToNull(values.state),
-  ptGross:
-    values.ptGross === undefined || values.ptGross.trim() === ''
-      ? null
-      : Number(values.ptGross),
+  ptGross: (() => {
+    if (values.ptGross === undefined || values.ptGross.trim() === '') {
+      return null;
+    }
+    const amount = Number(values.ptGross);
+    // 0 means "no gross" — same as blank (P.Tax ₹200).
+    return !Number.isFinite(amount) || amount === 0 ? null : amount;
+  })(),
 });
 
 const formatAmount = (value: number | null) =>
